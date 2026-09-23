@@ -1,0 +1,427 @@
+/* ============================================================
+   KitchenIQ Pro — Dashboard JS
+   Connects new dashboard UI to backend APIs.
+   ============================================================ */
+
+// ============================================================
+// CONFIG
+// ============================================================
+const API_BASE = (window.API_BASE || '');  // optional override
+const REFRESH_MS = 30000;                  // auto-refresh every 30s
+const DASHBOARD_DAYS = 7;                  // 7 / 30 / 90
+
+// ============================================================
+// AUTH HELPER
+// ============================================================
+function getToken() {
+    // Match existing project pattern (check auth.js/config.js for exact key)
+    return localStorage.getItem('token')
+        || localStorage.getItem('jwt_token')
+        || localStorage.getItem('kitcheniq_token')
+        || sessionStorage.getItem('token');
+}
+
+async function apiFetch(path, options = {}) {
+    const token = getToken();
+    if (!token) {
+        console.warn('No JWT token found — redirecting to login');
+        window.location.href = '/login.html';
+        return null;
+    }
+
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+        'Authorization': `Bearer ${token}`,
+    };
+
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+    if (res.status === 401) {
+        console.warn('Token expired — redirecting to login');
+        localStorage.clear();
+        window.location.href = '/login.html';
+        return null;
+    }
+
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`API ${path} failed (${res.status}): ${err}`);
+    }
+
+    return res.json();
+}
+
+// ============================================================
+// FORMATTERS
+// ============================================================
+function formatINR(num) {
+    const n = Number(num) || 0;
+    return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+
+function formatINRShort(num) {
+    const n = Number(num) || 0;
+    if (n >= 10000000) return '₹' + (n / 10000000).toFixed(2) + 'Cr';
+    if (n >= 100000)   return '₹' + (n / 100000).toFixed(2) + 'L';
+    if (n >= 1000)     return '₹' + (n / 1000).toFixed(1) + 'k';
+    return '₹' + n;
+}
+
+function formatNumber(num) {
+    return (Number(num) || 0).toLocaleString('en-IN');
+}
+
+function formatPct(num, withSign = true) {
+    const n = Number(num) || 0;
+    const sign = withSign && n > 0 ? '+' : '';
+    return sign + n.toFixed(1) + '%';
+}
+
+// ============================================================
+// KPI UPDATE
+// ============================================================
+function updateKPIs(kpis) {
+    const setText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    setText('kpi-revenue', formatINR(kpis.total_revenue));
+    setText('kpi-orders', formatNumber(kpis.total_orders));
+    setText('kpi-profit', formatINR(kpis.net_profit));
+    setText('kpi-rating', kpis.avg_rating ? kpis.avg_rating.toFixed(1) + ' / 5' : '— / 5');
+
+    // Update growth badges (first span inside each card)
+    const growths = [
+        { id: 'kpi-revenue', pct: kpis.revenue_growth_pct },
+        { id: 'kpi-orders',  pct: kpis.orders_growth_pct },
+        { id: 'kpi-profit',  pct: kpis.profit_growth_pct ?? kpis.revenue_growth_pct },
+        { id: 'kpi-rating',  pct: 0 },
+    ];
+
+    growths.forEach(({ id, pct }) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const card = el.closest('.bg-white');
+        if (!card) return;
+        const badge = card.querySelector('.text-xs span');
+        if (!badge) return;
+        const positive = (pct || 0) >= 0;
+        badge.className = `font-medium flex items-center px-1.5 py-0.5 rounded ${positive ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50'}`;
+        badge.innerHTML = `<i class="fa-solid fa-arrow-trend-${positive ? 'up' : 'down'} mr-1 text-[10px]"></i> ${formatPct(Math.abs(pct))}`;
+    });
+}
+
+// ============================================================
+// CHARTS
+// ============================================================
+let trendChartInstance = null;
+let platformChartInstance = null;
+
+const rupeeFormatter = (value) => {
+    if (value >= 100000) return '₹' + (value / 100000).toFixed(1) + 'L';
+    if (value >= 1000)   return '₹' + (value / 1000).toFixed(1) + 'k';
+    return '₹' + value;
+};
+
+function buildTrendChart(trend) {
+    const ctx = document.getElementById('trendChart');
+    if (!ctx) return;
+
+    if (trendChartInstance) trendChartInstance.destroy();
+
+    const grad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
+    grad.addColorStop(0, 'rgba(14, 165, 233, 0.2)');
+    grad.addColorStop(1, 'rgba(14, 165, 233, 0)');
+
+    trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: trend.labels,
+            datasets: [
+                {
+                    label: 'Total Revenue',
+                    data: trend.revenue,
+                    borderColor: '#0ea5e9',
+                    backgroundColor: grad,
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#0ea5e9',
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                },
+                {
+                    label: 'Net Profit',
+                    data: trend.profit,
+                    borderColor: '#10b981',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    tension: 0.4,
+                    fill: false,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#10b981',
+                    pointRadius: 3,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 6, font: { size: 11 } } },
+                tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${rupeeFormatter(c.raw)}` } },
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9', drawBorder: false }, ticks: { callback: rupeeFormatter, maxTicksLimit: 6 } },
+                x: { grid: { display: false, drawBorder: false } },
+            },
+            interaction: { mode: 'index', intersect: false },
+        },
+    });
+}
+
+function buildPlatformChart(platforms) {
+    const ctx = document.getElementById('platformBarChart');
+    if (!ctx) return;
+
+    if (platformChartInstance) platformChartInstance.destroy();
+
+    platformChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: platforms.labels,
+            datasets: [
+                {
+                    label: 'Gross Revenue',
+                    data: platforms.gross_revenue,
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4,
+                    barPercentage: 0.6,
+                    categoryPercentage: 0.8,
+                },
+                {
+                    label: 'Commissions & Fees',
+                    data: platforms.commission,
+                    backgroundColor: '#f43f5e',
+                    borderRadius: 4,
+                    barPercentage: 0.6,
+                    categoryPercentage: 0.8,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 6, font: { size: 11 } } },
+                tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${rupeeFormatter(c.raw)}` } },
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9', drawBorder: false }, ticks: { callback: rupeeFormatter, maxTicksLimit: 5 } },
+                x: { grid: { display: false, drawBorder: false } },
+            },
+        },
+    });
+}
+
+// ============================================================
+// INTEGRATIONS BAR (top)
+// ============================================================
+function updateIntegrationsBar(integrations) {
+    if (!integrations || integrations.length === 0) return;
+
+    integrations.forEach((integ) => {
+        // Find the card for this platform (Zomato/Swiggy/Uber Eats)
+        const cards = document.querySelectorAll('.grid.grid-cols-1.sm\\:grid-cols-3 > div');
+        cards.forEach((card) => {
+            const platformName = card.querySelector('p.text-sm.font-semibold');
+            if (!platformName) return;
+            if (platformName.textContent.toLowerCase().trim() !== integ.platform.toLowerCase()) return;
+
+            const statusLine = card.querySelector('p.text-\\[10px\\]');
+            if (!statusLine) return;
+
+            const isConnected = integ.status === 'connected';
+            const dotColor = isConnected ? 'bg-emerald-500' : 'bg-rose-500';
+            const textColor = isConnected ? 'text-emerald-600' : 'text-rose-500';
+            const pulseClass = isConnected ? 'animate-pulse' : '';
+            const label = isConnected ? 'Connected' : (integ.status || 'Disconnected');
+            const lastSync = integ.last_sync_at ? ` · ${new Date(integ.last_sync_at).toLocaleTimeString()}` : '';
+
+            statusLine.className = `text-[10px] ${textColor} mt-1 flex items-center`;
+            statusLine.innerHTML = `<span class="h-1.5 w-1.5 rounded-full ${dotColor} mr-1 ${pulseClass}"></span> ${label}${lastSync}`;
+        });
+    });
+}
+
+// ============================================================
+// AI INSIGHTS (right panel)
+// ============================================================
+const TYPE_STYLES = {
+    success:  { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100', accent: 'bg-emerald-500', icon: 'fa-arrow-up-right-dots', label: 'Promote' },
+    info:     { bg: 'bg-blue-50',    text: 'text-blue-600',    border: 'border-blue-100',    accent: 'bg-blue-500',    icon: 'fa-lightbulb',            label: 'Opportunity' },
+    warning:  { bg: 'bg-amber-50',   text: 'text-amber-600',   border: 'border-amber-100',   accent: 'bg-amber-500',   icon: 'fa-wrench',               label: 'Optimize' },
+    danger:   { bg: 'bg-rose-50',    text: 'text-rose-600',    border: 'border-rose-100',    accent: 'bg-rose-500',    icon: 'fa-triangle-exclamation', label: 'Review' },
+};
+
+function renderInsights(insights) {
+    // Find container — either by ID (if Step 3.2 worked) or by class (fallback)
+    let container = document.getElementById('insights-container');
+    if (!container) {
+        // Fallback: find the scrollable div inside the AI panel
+        const panels = document.querySelectorAll('div');
+        for (const p of panels) {
+            if (p.className.includes('p-4') && p.className.includes('overflow-y-auto') && p.className.includes('space-y-4')) {
+                container = p;
+                break;
+            }
+        }
+    }
+    if (!container) {
+        console.warn('AI insights container not found');
+        return;
+    }
+
+    if (!insights || insights.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-slate-400 text-xs py-8">
+                <i class="fa-solid fa-inbox text-2xl mb-2"></i>
+                <p>No insights yet — upload some orders first.</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = insights.slice(0, 4).map((insight) => {
+        const style = TYPE_STYLES[insight.type] || TYPE_STYLES.info;
+        return `
+            <div class="bg-white border ${style.border} rounded-lg p-4 shadow-sm relative">
+                <div class="absolute top-0 left-0 w-1 h-full ${style.accent} rounded-l-lg"></div>
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-[10px] font-bold tracking-wider ${style.text} uppercase flex items-center ${style.bg} px-1.5 py-0.5 rounded">
+                        <i class="fa-solid ${style.icon} mr-1"></i> ${style.label}
+                    </span>
+                    <span class="text-[10px] text-slate-400">${insight.category || ''}</span>
+                </div>
+                <h3 class="text-sm font-bold text-slate-800">${insight.title || insight.item || 'Insight'}</h3>
+                <p class="text-xs text-slate-600 mt-1 leading-relaxed">${insight.reason || insight.message || ''}</p>
+                ${insight.suggested_action ? `
+                    <div class="mt-2 bg-slate-50 p-2 rounded text-[11px] text-slate-600 border border-slate-100">
+                        <strong>Action:</strong> ${insight.suggested_action}
+                    </div>` : ''}
+            </div>`;
+    }).join('');
+}
+
+async function loadInsights() {
+    try {
+        const insights = await apiFetch('/api/recommendations/top?limit=4');
+        if (insights) renderInsights(insights);
+    } catch (e) {
+        console.warn('Insights failed:', e);
+    }
+}
+
+// ============================================================
+// SYNC BUTTON
+// ============================================================
+window.syncPipeline = async function(btnElement, platform) {
+    if (btnElement.disabled) return;
+
+    const original = btnElement.innerHTML;
+    btnElement.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Syncing';
+    btnElement.disabled = true;
+    btnElement.classList.add('opacity-75', 'cursor-wait');
+
+    try {
+        const result = await apiFetch('/api/integrations/sync', {
+            method: 'POST',
+            body: JSON.stringify({ platform }),
+        });
+
+        btnElement.innerHTML = '<i class="fa-solid fa-check text-emerald-600 mr-1"></i> Done';
+        btnElement.classList.remove('opacity-75', 'cursor-wait');
+        btnElement.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-700');
+
+        // Refresh after a short delay (sync runs async in background)
+        setTimeout(() => {
+            loadDashboard();
+        }, 3000);
+
+        setTimeout(() => {
+            btnElement.innerHTML = original;
+            btnElement.disabled = false;
+            btnElement.classList.remove('bg-emerald-50', 'border-emerald-200', 'text-emerald-700');
+        }, 4000);
+
+    } catch (e) {
+        console.error('Sync failed:', e);
+        btnElement.innerHTML = '<i class="fa-solid fa-xmark text-rose-600 mr-1"></i> Failed';
+        btnElement.classList.remove('opacity-75', 'cursor-wait');
+        btnElement.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-700');
+
+        setTimeout(() => {
+            btnElement.innerHTML = original;
+            btnElement.disabled = false;
+            btnElement.classList.remove('bg-rose-50', 'border-rose-200', 'text-rose-700');
+        }, 3000);
+    }
+};
+
+// ============================================================
+// MAIN LOADER
+// ============================================================
+async function loadDashboard() {
+    try {
+        const data = await apiFetch(`/api/dashboard/summary?days=${DASHBOARD_DAYS}`);
+        if (!data) return;
+
+        updateKPIs(data.kpis || {});
+        buildTrendChart(data.trend || { labels: [], revenue: [], profit: [] });
+        buildPlatformChart(data.platforms || { labels: [], gross_revenue: [], commission: [] });
+        updateIntegrationsBar(data.integrations || []);
+
+        // Insights load separately (different endpoint)
+        loadInsights();
+
+    } catch (e) {
+        console.error('Dashboard load failed:', e);
+        // Optionally show toast/error state
+    }
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    // Chart.js defaults
+    if (window.Chart) {
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.plugins.tooltip.backgroundColor = '#0f172a';
+        Chart.defaults.plugins.tooltip.padding = 10;
+        Chart.defaults.plugins.tooltip.cornerRadius = 6;
+    }
+
+    // Mobile sidebar toggle
+    const sidebar = document.getElementById('sidebar');
+    const openBtn = document.getElementById('openSidebar');
+    const closeBtn = document.getElementById('closeSidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+
+    function toggleSidebar() {
+        if (!sidebar) return;
+        const isClosed = sidebar.classList.contains('-translate-x-full');
+        sidebar.classList.toggle('-translate-x-full', !isClosed);
+        if (overlay) overlay.classList.toggle('hidden', !isClosed);
+    }
+    openBtn?.addEventListener('click', toggleSidebar);
+    closeBtn?.addEventListener('click', toggleSidebar);
+    overlay?.addEventListener('click', toggleSidebar);
+
+    // Initial load + auto-refresh
+    loadDashboard();
+    setInterval(loadDashboard, REFRESH_MS);
+});

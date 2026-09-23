@@ -1,0 +1,304 @@
+=== BATCH 3: AUTH + DB + MODELS ===
+Generated: 09/23/2026 12:48:16
+
+
+########## FILE: backend/middleware/auth.py ##########
+-------------------------------------------
+from functools import wraps
+from flask import request, jsonify, current_app
+import jwt
+
+
+def token_required(f):
+    """Decorator to protect routes requiring JWT."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        # Get token from header
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '')
+
+        # Also check for JSON body token
+        if not token and request.is_json:
+            token = request.json.get('token')
+
+        if not token:
+            return jsonify({'error': 'Authentication token missing'}), 401
+
+        try:
+            data = jwt.decode(
+                token,
+                current_app.config['SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            request.user_id = data['user_id']
+            request.user_email = data.get('email', '')
+
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token expired. Please login again.'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        return f(*args, **kwargs)
+    return decorated
+
+
+
+########## FILE: backend/db/connection.py ##########
+-------------------------------------------
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2 import pool
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Connection pool for performance
+_db_pool = None
+
+def init_pool():
+    """Initialize connection pool."""
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=os.getenv('DATABASE_URL')
+        )
+    return _db_pool
+
+
+def get_db_connection():
+    """Get connection from pool."""
+    global _db_pool
+    if _db_pool is None:
+        init_pool()
+    return _db_pool.getconn()
+
+
+def release_db_connection(conn):
+    """Return connection to pool."""
+    if _db_pool and conn:
+        _db_pool.putconn(conn)
+
+
+def execute_query(query, params=None, fetch=True):
+    """Execute a query and return results."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        cur.execute(query, params or ())
+
+        if fetch:
+            result = cur.fetchall()
+            conn.commit()  # IMPORTANT: commit INSERT/UPDATE/DELETE
+            return result
+
+        conn.commit()
+        return True
+
+    except Exception as e:
+        conn.rollback()
+        raise e
+
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+def execute_one(query, params=None):
+    """Execute query and return single row."""
+    result = execute_query(query, params, fetch=True)
+    return result[0] if result else None
+
+
+########## FILE: backend/models/order.py ##########
+-------------------------------------------
+"""
+Order model — maps to `orders` table.
+"""
+from dataclasses import dataclass
+from datetime import date, time, datetime
+from typing import Optional
+
+
+@dataclass
+class Order:
+    id: Optional[int] = None
+    kitchen_id: Optional[int] = None
+    order_date: Optional[date] = None
+    order_time: Optional[time] = None
+    platform: str = ''
+    customer_phone: Optional[str] = None
+    total_amount: float = 0.0
+    commission_pct: float = 25.0
+    delivery_time_minutes: Optional[int] = None
+    prep_time_minutes: Optional[int] = None
+    status: str = 'delivered'
+    created_at: Optional[datetime] = None
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'Order':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            kitchen_id=row.get('kitchen_id'),
+            order_date=row.get('order_date'),
+            order_time=row.get('order_time'),
+            platform=row.get('platform', ''),
+            customer_phone=row.get('customer_phone'),
+            total_amount=float(row.get('total_amount') or 0),
+            commission_pct=float(row.get('commission_pct') or 25),
+            delivery_time_minutes=row.get('delivery_time_minutes'),
+            prep_time_minutes=row.get('prep_time_minutes'),
+            status=row.get('status', 'delivered'),
+            created_at=row.get('created_at'),
+        )
+
+    @property
+    def net_amount(self) -> float:
+        return round(self.total_amount * (1 - self.commission_pct / 100), 2)
+
+    @property
+    def is_late(self) -> bool:
+        return (self.delivery_time_minutes or 0) > 45
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'kitchen_id': self.kitchen_id,
+            'order_date': str(self.order_date) if self.order_date else None,
+            'order_time': str(self.order_time) if self.order_time else None,
+            'platform': self.platform,
+            'customer_phone': self.customer_phone,
+            'total_amount': self.total_amount,
+            'net_amount': self.net_amount,
+            'commission_pct': self.commission_pct,
+            'delivery_time_minutes': self.delivery_time_minutes,
+            'prep_time_minutes': self.prep_time_minutes,
+            'status': self.status,
+        }
+
+
+########## FILE: backend/models/user.py ##########
+-------------------------------------------
+"""
+User model — maps to `users` table.
+"""
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+
+@dataclass
+class User:
+    id: Optional[int] = None
+    email: str = ''
+    password_hash: str = ''
+    full_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'User':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            email=row.get('email', ''),
+            password_hash=row.get('password_hash', ''),
+            full_name=row.get('full_name'),
+            created_at=row.get('created_at'),
+            updated_at=row.get('updated_at'),
+        )
+
+    def to_dict(self, include_password: bool = False) -> dict:
+        d = {
+            'id': self.id,
+            'email': self.email,
+            'full_name': self.full_name,
+            'created_at': str(self.created_at) if self.created_at else None,
+        }
+        if include_password:
+            d['password_hash'] = self.password_hash
+        return d
+
+    def is_valid(self) -> bool:
+        return bool(self.email and '@' in self.email and self.password_hash)
+
+
+########## FILE: backend/models/customer.py ##########
+-------------------------------------------
+"""
+Customer model — maps to `customers` table.
+"""
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Optional
+
+
+@dataclass
+class Customer:
+    id: Optional[int] = None
+    kitchen_id: Optional[int] = None
+    phone: Optional[str] = None
+    first_order_date: Optional[date] = None
+    last_order_date: Optional[date] = None
+    total_orders: int = 0
+    total_spent: float = 0.0
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'Customer':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            kitchen_id=row.get('kitchen_id'),
+            phone=row.get('phone'),
+            first_order_date=row.get('first_order_date'),
+            last_order_date=row.get('last_order_date'),
+            total_orders=int(row.get('total_orders') or 0),
+            total_spent=float(row.get('total_spent') or 0),
+        )
+
+    @property
+    def avg_order_value(self) -> float:
+        if self.total_orders <= 0:
+            return 0.0
+        return round(self.total_spent / self.total_orders, 2)
+
+    @property
+    def recency_days(self) -> int:
+        if not self.last_order_date:
+            return 999
+        return (date.today() - self.last_order_date).days
+
+    def rfm_segment(self) -> str:
+        r, f, m = self.recency_days, self.total_orders, self.total_spent
+        if r <= 15 and f >= 5 and m >= 3000:
+            return 'VIP'
+        if r <= 30 and f >= 3:
+            return 'Loyal'
+        if r <= 30 and f <= 2:
+            return 'New'
+        if r > 30 and f >= 3:
+            return 'At Risk'
+        return 'Lost'
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'kitchen_id': self.kitchen_id,
+            'phone': self.phone,
+            'first_order_date': str(self.first_order_date) if self.first_order_date else None,
+            'last_order_date': str(self.last_order_date) if self.last_order_date else None,
+            'total_orders': self.total_orders,
+            'total_spent': self.total_spent,
+            'avg_order_value': self.avg_order_value,
+            'recency_days': self.recency_days,
+            'segment': self.rfm_segment(),
+        }

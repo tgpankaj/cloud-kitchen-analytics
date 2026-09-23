@@ -112,42 +112,6 @@ def create_app():
     @app.errorhandler(429)
     def ratelimit_handler(e):
         return jsonify({'error': 'Rate limit exceeded. Try again later.'}), 429
-
-    # ========================================================
-    # READINESS CHECK (production)
-    # Verifies DB connectivity
-    # ========================================================
-
-    @app.route('/api/ready')
-    @limiter.exempt
-    def ready():
-        """Kubernetes-style readiness probe."""
-        from db.connection import execute_one
-        checks = {"db": False, "api": True}
-
-        try:
-            execute_one("SELECT 1 AS ok")
-            checks["db"] = True
-        except Exception as e:
-            checks["db_error"] = str(e)[:200]
-
-        status_code = 200 if all([checks["db"], checks["api"]]) else 503
-        return jsonify({
-            "ready": status_code == 200,
-            "checks": checks,
-            "version": "2.0.0",
-        }), status_code
-
-
-    @app.route('/api/version')
-    @limiter.exempt
-    def version():
-        return jsonify({
-            "version": "2.0.0",
-            "env": Config.FLASK_ENV,
-            "service": "Cloud Kitchen Analytics API",
-        })
-
     # Phase 8: start auto-sync worker (only in main process, not reloader)
     if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         try:

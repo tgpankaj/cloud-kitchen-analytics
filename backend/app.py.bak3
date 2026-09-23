@@ -5,13 +5,7 @@ from flask_limiter.util import get_remote_address
 from config import Config
 import os
 import logging
-import sys
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-)
 
 
 # Blueprint imports
@@ -30,9 +24,8 @@ from routes.dashboard import dashboard_bp
 from routes.finance import finance_bp
 from routes.search import search_bp
 from routes.reports import reports_bp
-from routes.integrations import integrations_bp
 
-from routes.notifications_kpi import notifications_bp as notifications_kpi_bp
+from routes.integrations import integrations_bp
 
 # Initialize limiter
 limiter = Limiter(
@@ -74,9 +67,9 @@ def create_app():
     app.register_blueprint(finance_bp, url_prefix='/api/finance')
     app.register_blueprint(search_bp, url_prefix='/api/search')
     app.register_blueprint(reports_bp, url_prefix='/api/reports')
-    app.register_blueprint(integrations_bp, url_prefix='/api/integrations')
-    app.register_blueprint(notifications_kpi_bp, url_prefix='/api/notifications/v2')
     
+    app.register_blueprint(integrations_bp, url_prefix='/api/integrations')
+
 
 
 
@@ -113,49 +106,8 @@ def create_app():
     def ratelimit_handler(e):
         return jsonify({'error': 'Rate limit exceeded. Try again later.'}), 429
 
-    # ========================================================
-    # READINESS CHECK (production)
-    # Verifies DB connectivity
-    # ========================================================
-
-    @app.route('/api/ready')
-    @limiter.exempt
-    def ready():
-        """Kubernetes-style readiness probe."""
-        from db.connection import execute_one
-        checks = {"db": False, "api": True}
-
-        try:
-            execute_one("SELECT 1 AS ok")
-            checks["db"] = True
-        except Exception as e:
-            checks["db_error"] = str(e)[:200]
-
-        status_code = 200 if all([checks["db"], checks["api"]]) else 503
-        return jsonify({
-            "ready": status_code == 200,
-            "checks": checks,
-            "version": "2.0.0",
-        }), status_code
-
-
-    @app.route('/api/version')
-    @limiter.exempt
-    def version():
-        return jsonify({
-            "version": "2.0.0",
-            "env": Config.FLASK_ENV,
-            "service": "Cloud Kitchen Analytics API",
-        })
-
-    # Phase 8: start auto-sync worker (only in main process, not reloader)
-    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        try:
-            start_scheduler(app, interval_minutes=1)
-        except Exception as _e:
-            app.logger.error(f"Failed to start scheduler: {_e}")
-
     return app
+
 
 # Gunicorn entry
 app = create_app()

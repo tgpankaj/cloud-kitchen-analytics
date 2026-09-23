@@ -1,0 +1,8450 @@
+=== KITCHENIQ PHASE 0 AUDIT ===
+Generated: 09/23/2026 12:40:51
+
+
+### FILE: requirements.txt
+-------------------------------------------
+Flask==3.0.0
+Flask-Cors==4.0.0
+python-dotenv==1.0.0
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.9
+pandas==2.1.4
+numpy==1.26.2
+matplotlib==3.8.2
+plotly==5.18.0
+scikit-learn==1.4.0
+openpyxl==3.1.5
+PyJWT==2.8.0
+Werkzeug==3.0.1
+gunicorn==21.2.0
+
+### FILE: backend/requirements.txt
+-------------------------------------------
+Flask==3.0.0
+Flask-Cors==4.0.0
+python-dotenv==1.0.0
+
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.9
+
+pandas==2.1.4
+numpy==1.26.2
+matplotlib==3.8.2
+plotly==5.18.0
+scikit-learn==1.4.0
+openpyxl==3.1.5
+
+PyJWT==2.8.0
+Werkzeug==3.0.1
+
+gunicorn==21.2.0
+
+
+### FILE: backend/db/schema.sql
+-------------------------------------------
+-- ============================================
+-- CLOUD KITCHEN ANALYTICS - SCHEMA
+-- ============================================
+
+DROP TABLE IF EXISTS uploads CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS order_items CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS recipes CASCADE;
+DROP TABLE IF EXISTS ingredients CASCADE;
+DROP TABLE IF EXISTS menu_items CASCADE;
+DROP TABLE IF EXISTS kitchens CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+-- USERS
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- KITCHENS
+CREATE TABLE kitchens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    city VARCHAR(100),
+    address TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- MENU ITEMS
+CREATE TABLE menu_items (
+    id SERIAL PRIMARY KEY,
+    kitchen_id INTEGER REFERENCES kitchens(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(100),
+    cost_price NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    selling_price NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    prep_time_minutes INTEGER DEFAULT 15,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- INGREDIENTS
+CREATE TABLE ingredients (
+    id SERIAL PRIMARY KEY,
+    kitchen_id INTEGER REFERENCES kitchens(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    unit VARCHAR(50),
+    cost_per_unit NUMERIC(10, 2) DEFAULT 0,
+    current_stock NUMERIC(10, 2) DEFAULT 0,
+    reorder_threshold NUMERIC(10, 2) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- RECIPES
+CREATE TABLE recipes (
+    id SERIAL PRIMARY KEY,
+    menu_item_id INTEGER REFERENCES menu_items(id) ON DELETE CASCADE,
+    ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE CASCADE,
+    quantity_required NUMERIC(10, 3) NOT NULL
+);
+
+-- ORDERS
+CREATE TABLE orders (
+    id SERIAL PRIMARY KEY,
+    kitchen_id INTEGER REFERENCES kitchens(id) ON DELETE CASCADE,
+    order_date DATE NOT NULL,
+    order_time TIME,
+    platform VARCHAR(50) NOT NULL,
+    customer_phone VARCHAR(15),
+    total_amount NUMERIC(10, 2) DEFAULT 0,
+    commission_pct NUMERIC(5, 2) DEFAULT 25,
+    delivery_time_minutes INTEGER,
+    prep_time_minutes INTEGER,
+    status VARCHAR(50) DEFAULT 'delivered',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ORDER ITEMS
+CREATE TABLE order_items (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+    menu_item_id INTEGER REFERENCES menu_items(id),
+    quantity INTEGER NOT NULL,
+    unit_price NUMERIC(10, 2) NOT NULL
+);
+
+-- CUSTOMERS
+CREATE TABLE customers (
+    id SERIAL PRIMARY KEY,
+    kitchen_id INTEGER REFERENCES kitchens(id) ON DELETE CASCADE,
+    phone VARCHAR(15),
+    first_order_date DATE,
+    last_order_date DATE,
+    total_orders INTEGER DEFAULT 0,
+    total_spent NUMERIC(10, 2) DEFAULT 0,
+    UNIQUE(kitchen_id, phone)
+);
+
+-- UPLOADS LOG
+CREATE TABLE uploads (
+    id SERIAL PRIMARY KEY,
+    kitchen_id INTEGER REFERENCES kitchens(id) ON DELETE CASCADE,
+    filename VARCHAR(255),
+    rows_inserted INTEGER DEFAULT 0,
+    rows_failed INTEGER DEFAULT 0,
+    uploaded_at TIMESTAMP DEFAULT NOW()
+);
+
+-- INDEXES
+CREATE INDEX idx_orders_kitchen_date ON orders(kitchen_id, order_date DESC);
+CREATE INDEX idx_orders_platform ON orders(platform);
+CREATE INDEX idx_order_items_order ON order_items(order_id);
+CREATE INDEX idx_order_items_menu ON order_items(menu_item_id);
+CREATE INDEX idx_menu_items_kitchen ON menu_items(kitchen_id);
+CREATE INDEX idx_customers_kitchen ON customers(kitchen_id);
+CREATE INDEX idx_customers_phone ON customers(phone);
+
+-- ============================================
+-- SUCCESS MESSAGE
+-- ============================================
+SELECT 'Schema created successfully!' AS status;
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    plan VARCHAR(50) NOT NULL,          -- 'starter', 'pro', 'business'
+    status VARCHAR(50) DEFAULT 'active', -- 'active', 'cancelled', 'expired'
+    razorpay_order_id VARCHAR(100),
+    razorpay_payment_id VARCHAR(100),
+    amount NUMERIC(10, 2),
+    started_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_subscriptions_user ON subscriptions(user_id);
+CREATE INDEX idx_subscriptions_status ON subscriptions(status);
+
+
+
+### FILE: backend/app.py
+-------------------------------------------
+from flask import Flask, jsonify
+from flask_cors import CORS
+from flask_limiter import Limiter 
+from flask_limiter.util import get_remote_address 
+from config import Config
+import os
+import logging
+
+
+
+# Blueprint imports
+from routes.auth import auth_bp
+from routes.upload import upload_bp
+from routes.analytics import analytics_bp
+from routes.items import items_bp
+from routes.customers import customers_bp
+from routes.delivery import delivery_bp
+from routes.foodcost import foodcost_bp
+from routes.branches import branches_bp
+from routes.recommendations import recommendations_bp
+from routes.payments import payments_bp
+from logging.handlers import RotatingFileHandler
+from routes.dashboard import dashboard_bp
+from routes.finance import finance_bp
+from routes.search import search_bp
+from routes.reports import reports_bp
+from routes.notifications import notifications_bp
+
+# Initialize limiter
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[Config.RATELIMIT_DEFAULT],
+    storage_uri=Config.RATELIMIT_STORAGE_URI,
+)
+
+
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
+
+    # CORS
+    CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True)
+
+    # Rate limiting
+    limiter.init_app(app)
+
+    # Register blueprints
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(upload_bp, url_prefix='/api/upload')
+    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
+    app.register_blueprint(items_bp, url_prefix='/api/items')
+    app.register_blueprint(customers_bp, url_prefix='/api/customers')
+    app.register_blueprint(delivery_bp, url_prefix='/api/delivery')
+    app.register_blueprint(foodcost_bp, url_prefix='/api/foodcost')
+    app.register_blueprint(branches_bp, url_prefix='/api/branches')
+    app.register_blueprint(recommendations_bp, url_prefix='/api/recommendations')
+    app.register_blueprint(payments_bp, url_prefix='/api/payments')
+    app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
+    app.register_blueprint(finance_bp, url_prefix='/api/finance')
+    app.register_blueprint(search_bp, url_prefix='/api/search')
+    app.register_blueprint(reports_bp, url_prefix='/api/reports')
+    app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
+
+
+
+
+    # Health check
+    @app.route('/api/health')
+    @limiter.exempt
+    def health():
+        return jsonify({
+            'status': 'ok',
+            'service': 'Cloud Kitchen Analytics API',
+            'version': '2.0.0',
+            'env': Config.FLASK_ENV
+        })
+
+    # Root
+    @app.route('/')
+    def root():
+        return jsonify({
+            'service': 'Kitchen Analytics API',
+            'docs': '/api/health',
+            'version': '2.0.0'
+        })
+
+    # Error handlers
+    @app.errorhandler(404)
+    def not_found(e):
+        return jsonify({'error': 'Endpoint not found'}), 404
+
+    @app.errorhandler(500)
+    def server_error(e):
+        return jsonify({'error': 'Internal server error'}), 500
+
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        return jsonify({'error': 'Rate limit exceeded. Try again later.'}), 429
+
+    return app
+
+
+# Gunicorn entry
+app = create_app()
+
+if __name__ == '__main__':
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+
+
+
+if not app.debug:
+    # Console logging (Render captures stdout)
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
+    )
+    handler.setFormatter(formatter)
+    app.logger.addHandler(handler)
+
+    
+
+
+### FILE: backend/config.py
+-------------------------------------------
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Config:
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
+    DATABASE_URL = os.getenv('DATABASE_URL')
+    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB
+    JWT_EXPIRY_DAYS = 7
+    FLASK_ENV = os.getenv('FLASK_ENV', 'production')
+
+    # CORS - allow production domains
+    CORS_ORIGINS = [
+        'http://localhost:5500',
+        'http://127.0.0.1:5500',
+        'https://kitchen-analytics.pages.dev',       # Cloudflare Pages default
+        'https://app.kitchenanalytics.in',            # Custom domain
+        'https://kitchenanalytics.in',
+    ]
+
+    # Rate limiting
+    RATELIMIT_STORAGE_URI = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
+    RATELIMIT_DEFAULT = "200 per hour"
+    RATELIMIT_AUTH = "20 per hour"
+
+    # Payments (add later)
+    RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
+    RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
+
+
+
+
+    
+
+
+### FILE: backend/models/user.py
+-------------------------------------------
+"""
+User model — maps to `users` table.
+"""
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+
+@dataclass
+class User:
+    id: Optional[int] = None
+    email: str = ''
+    password_hash: str = ''
+    full_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'User':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            email=row.get('email', ''),
+            password_hash=row.get('password_hash', ''),
+            full_name=row.get('full_name'),
+            created_at=row.get('created_at'),
+            updated_at=row.get('updated_at'),
+        )
+
+    def to_dict(self, include_password: bool = False) -> dict:
+        d = {
+            'id': self.id,
+            'email': self.email,
+            'full_name': self.full_name,
+            'created_at': str(self.created_at) if self.created_at else None,
+        }
+        if include_password:
+            d['password_hash'] = self.password_hash
+        return d
+
+    def is_valid(self) -> bool:
+        return bool(self.email and '@' in self.email and self.password_hash)
+
+
+### FILE: backend/models/order.py
+-------------------------------------------
+"""
+Order model — maps to `orders` table.
+"""
+from dataclasses import dataclass
+from datetime import date, time, datetime
+from typing import Optional
+
+
+@dataclass
+class Order:
+    id: Optional[int] = None
+    kitchen_id: Optional[int] = None
+    order_date: Optional[date] = None
+    order_time: Optional[time] = None
+    platform: str = ''
+    customer_phone: Optional[str] = None
+    total_amount: float = 0.0
+    commission_pct: float = 25.0
+    delivery_time_minutes: Optional[int] = None
+    prep_time_minutes: Optional[int] = None
+    status: str = 'delivered'
+    created_at: Optional[datetime] = None
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'Order':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            kitchen_id=row.get('kitchen_id'),
+            order_date=row.get('order_date'),
+            order_time=row.get('order_time'),
+            platform=row.get('platform', ''),
+            customer_phone=row.get('customer_phone'),
+            total_amount=float(row.get('total_amount') or 0),
+            commission_pct=float(row.get('commission_pct') or 25),
+            delivery_time_minutes=row.get('delivery_time_minutes'),
+            prep_time_minutes=row.get('prep_time_minutes'),
+            status=row.get('status', 'delivered'),
+            created_at=row.get('created_at'),
+        )
+
+    @property
+    def net_amount(self) -> float:
+        return round(self.total_amount * (1 - self.commission_pct / 100), 2)
+
+    @property
+    def is_late(self) -> bool:
+        return (self.delivery_time_minutes or 0) > 45
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'kitchen_id': self.kitchen_id,
+            'order_date': str(self.order_date) if self.order_date else None,
+            'order_time': str(self.order_time) if self.order_time else None,
+            'platform': self.platform,
+            'customer_phone': self.customer_phone,
+            'total_amount': self.total_amount,
+            'net_amount': self.net_amount,
+            'commission_pct': self.commission_pct,
+            'delivery_time_minutes': self.delivery_time_minutes,
+            'prep_time_minutes': self.prep_time_minutes,
+            'status': self.status,
+        }
+
+
+### FILE: backend/models/customer.py
+-------------------------------------------
+"""
+Customer model — maps to `customers` table.
+"""
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Optional
+
+
+@dataclass
+class Customer:
+    id: Optional[int] = None
+    kitchen_id: Optional[int] = None
+    phone: Optional[str] = None
+    first_order_date: Optional[date] = None
+    last_order_date: Optional[date] = None
+    total_orders: int = 0
+    total_spent: float = 0.0
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'Customer':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            kitchen_id=row.get('kitchen_id'),
+            phone=row.get('phone'),
+            first_order_date=row.get('first_order_date'),
+            last_order_date=row.get('last_order_date'),
+            total_orders=int(row.get('total_orders') or 0),
+            total_spent=float(row.get('total_spent') or 0),
+        )
+
+    @property
+    def avg_order_value(self) -> float:
+        if self.total_orders <= 0:
+            return 0.0
+        return round(self.total_spent / self.total_orders, 2)
+
+    @property
+    def recency_days(self) -> int:
+        if not self.last_order_date:
+            return 999
+        return (date.today() - self.last_order_date).days
+
+    def rfm_segment(self) -> str:
+        r, f, m = self.recency_days, self.total_orders, self.total_spent
+        if r <= 15 and f >= 5 and m >= 3000:
+            return 'VIP'
+        if r <= 30 and f >= 3:
+            return 'Loyal'
+        if r <= 30 and f <= 2:
+            return 'New'
+        if r > 30 and f >= 3:
+            return 'At Risk'
+        return 'Lost'
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'kitchen_id': self.kitchen_id,
+            'phone': self.phone,
+            'first_order_date': str(self.first_order_date) if self.first_order_date else None,
+            'last_order_date': str(self.last_order_date) if self.last_order_date else None,
+            'total_orders': self.total_orders,
+            'total_spent': self.total_spent,
+            'avg_order_value': self.avg_order_value,
+            'recency_days': self.recency_days,
+            'segment': self.rfm_segment(),
+        }
+
+
+### FILE: backend/models/product.py
+-------------------------------------------
+"""
+Menu Item / Product model — maps to `menu_items` table.
+"""
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+
+@dataclass
+class Product:
+    id: Optional[int] = None
+    kitchen_id: Optional[int] = None
+    name: str = ''
+    category: Optional[str] = None
+    cost_price: float = 0.0
+    selling_price: float = 0.0
+    prep_time_minutes: int = 15
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'Product':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            kitchen_id=row.get('kitchen_id'),
+            name=row.get('name', ''),
+            category=row.get('category'),
+            cost_price=float(row.get('cost_price') or 0),
+            selling_price=float(row.get('selling_price') or 0),
+            prep_time_minutes=int(row.get('prep_time_minutes') or 15),
+            is_active=bool(row.get('is_active', True)),
+            created_at=row.get('created_at'),
+        )
+
+    @property
+    def margin(self) -> float:
+        if self.selling_price <= 0:
+            return 0.0
+        return round(
+            (self.selling_price - self.cost_price) / self.selling_price * 100, 2
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'kitchen_id': self.kitchen_id,
+            'name': self.name,
+            'category': self.category or 'Uncategorized',
+            'cost_price': self.cost_price,
+            'selling_price': self.selling_price,
+            'prep_time_minutes': self.prep_time_minutes,
+            'is_active': self.is_active,
+            'margin': self.margin,
+        }
+
+
+### FILE: backend/models/branch.py
+-------------------------------------------
+"""
+Kitchen / Branch model — maps to `kitchens` table.
+"""
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+
+@dataclass
+class Branch:
+    id: Optional[int] = None
+    user_id: Optional[int] = None
+    name: str = ''
+    city: Optional[str] = None
+    address: Optional[str] = None
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+
+    @classmethod
+    def from_row(cls, row: dict) -> 'Branch':
+        if not row:
+            return None
+        return cls(
+            id=row.get('id'),
+            user_id=row.get('user_id'),
+            name=row.get('name', ''),
+            city=row.get('city'),
+            address=row.get('address'),
+            is_active=bool(row.get('is_active', True)),
+            created_at=row.get('created_at'),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'city': self.city or '',
+            'address': self.address or '',
+            'is_active': self.is_active,
+            'created_at': str(self.created_at) if self.created_at else None,
+        }
+
+
+### FILE: backend/routes/dashboard.py
+-------------------------------------------
+"""
+========================================================
+KitchenIQ - Dashboard Routes
+========================================================
+Main dashboard APIs:
+- KPIs
+- Revenue / Profit Trends
+- Top Dishes
+- Recent Orders
+- Profit Margins
+- Combined Dashboard API
+========================================================
+"""
+
+from flask import Blueprint, request, jsonify
+
+from middleware.auth import token_required
+from db.connection import execute_query, execute_one
+
+
+dashboard_bp = Blueprint("dashboard", __name__)
+
+
+# ========================================================
+# HELPERS
+# ========================================================
+
+def get_kitchen_id(request):
+    """
+    Get kitchen_id from query parameter.
+    If not supplied, use the first kitchen of
+    the authenticated user.
+    """
+
+    kitchen_id = request.args.get("kitchen_id")
+
+    if kitchen_id:
+        try:
+            return int(kitchen_id)
+        except (ValueError, TypeError):
+            pass
+
+    kitchen = execute_one(
+        """
+        SELECT id
+        FROM kitchens
+        WHERE user_id = %s
+        ORDER BY id
+        LIMIT 1
+        """,
+        (request.user_id,)
+    )
+
+    return kitchen["id"] if kitchen else None
+
+
+def get_days(request):
+    """
+    Read dashboard period.
+
+    ?days=7
+    ?days=30
+    ?days=90
+    ?days=all
+
+    Default = 30 days
+    """
+
+    days = request.args.get("days", "30")
+
+    if str(days).lower() == "all":
+        return None
+
+    try:
+        days = int(days)
+        return max(days, 1)
+    except (ValueError, TypeError):
+        return 30
+
+
+def date_filter(days, alias="o"):
+    """
+    Generate order_date filter.
+
+    IMPORTANT:
+    Any query using this filter must use:
+
+        FROM orders o
+
+    because the filter references o.order_date.
+    """
+
+    if days is None:
+        return "", []
+
+    return (
+        f"AND {alias}.order_date >= "
+        f"CURRENT_DATE - INTERVAL '%s days'",
+        [days]
+    )
+
+
+def safe_float(value):
+    try:
+        return float(value or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def safe_int(value):
+    try:
+        return int(value or 0)
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_limit(request, default=5, maximum=50):
+    try:
+        value = int(
+            request.args.get(
+                "limit",
+                default
+            )
+        )
+
+        return max(
+            1,
+            min(value, maximum)
+        )
+
+    except (ValueError, TypeError):
+        return default
+
+
+# ========================================================
+# KPI DASHBOARD
+# GET /api/dashboard/kpis
+# ========================================================
+
+@dashboard_bp.route("/kpis", methods=["GET"])
+@token_required
+def kpis():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    result = execute_one(
+        f"""
+        SELECT
+
+            COUNT(*) AS total_orders,
+
+            COUNT(*) FILTER (
+                WHERE o.status != 'cancelled'
+            ) AS completed_orders,
+
+            COUNT(*) FILTER (
+                WHERE o.status = 'cancelled'
+            ) AS cancelled_orders,
+
+            COALESCE(
+                SUM(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                AVG(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS avg_order_value,
+
+            COUNT(
+                DISTINCT o.customer_phone
+            ) FILTER (
+                WHERE
+                    o.status != 'cancelled'
+                    AND o.customer_phone IS NOT NULL
+            ) AS unique_customers
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          {df}
+        """,
+        [kitchen_id] + dp
+    )
+
+    total_orders = safe_int(
+        result["total_orders"]
+    )
+
+    cancelled_orders = safe_int(
+        result["cancelled_orders"]
+    )
+
+    cancellation_rate = (
+        cancelled_orders /
+        max(total_orders, 1) *
+        100
+    )
+
+    return jsonify({
+
+        "period_days": days,
+
+        "total_orders":
+            total_orders,
+
+        "completed_orders":
+            safe_int(
+                result["completed_orders"]
+            ),
+
+        "cancelled_orders":
+            cancelled_orders,
+
+        "revenue":
+            round(
+                safe_float(
+                    result["revenue"]
+                ),
+                2
+            ),
+
+        "avg_order_value":
+            round(
+                safe_float(
+                    result["avg_order_value"]
+                ),
+                2
+            ),
+
+        "unique_customers":
+            safe_int(
+                result["unique_customers"]
+            ),
+
+        "cancellation_rate":
+            round(
+                cancellation_rate,
+                1
+            )
+    })
+
+
+# ========================================================
+# REVENUE / PROFIT TRENDS
+# GET /api/dashboard/trends
+# ========================================================
+
+@dashboard_bp.route("/trends", methods=["GET"])
+@token_required
+def trends():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            o.order_date::text AS date,
+
+            COUNT(*) FILTER (
+                WHERE o.status != 'cancelled'
+            ) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN o.status != 'cancelled'
+                        THEN
+                            o.total_amount
+                            *
+                            (
+                                1 -
+                                COALESCE(
+                                    o.commission_pct,
+                                    0
+                                ) / 100.0
+                            )
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS net_revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN o.status != 'cancelled'
+                        THEN
+                            o.total_amount
+                            *
+                            COALESCE(
+                                o.commission_pct,
+                                0
+                            ) / 100.0
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS commission
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          {df}
+
+        GROUP BY o.order_date
+
+        ORDER BY o.order_date
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "date":
+                r["date"],
+
+            "orders":
+                safe_int(
+                    r["orders"]
+                ),
+
+            "revenue":
+                round(
+                    safe_float(
+                        r["revenue"]
+                    ),
+                    2
+                ),
+
+            "net_revenue":
+                round(
+                    safe_float(
+                        r["net_revenue"]
+                    ),
+                    2
+                ),
+
+            "commission":
+                round(
+                    safe_float(
+                        r["commission"]
+                    ),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# TOP DISHES
+# GET /api/dashboard/top-dishes
+# ========================================================
+
+@dashboard_bp.route("/top-dishes", methods=["GET"])
+@token_required
+def top_dishes():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    limit = get_limit(
+        request,
+        default=5,
+        maximum=20
+    )
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            mi.id,
+
+            mi.name,
+
+            mi.category,
+
+            COALESCE(
+                SUM(oi.quantity),
+                0
+            ) AS quantity_sold,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    oi.unit_price
+                ),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    COALESCE(
+                        mi.cost_price,
+                        0
+                    )
+                ),
+                0
+            ) AS food_cost
+
+        FROM menu_items mi
+
+        JOIN order_items oi
+            ON oi.menu_item_id = mi.id
+
+        JOIN orders o
+            ON o.id = oi.order_id
+
+        WHERE mi.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY
+            mi.id,
+            mi.name,
+            mi.category
+
+        HAVING SUM(oi.quantity) > 0
+
+        ORDER BY revenue DESC
+
+        LIMIT %s
+        """,
+        [kitchen_id] + dp + [limit]
+    )
+
+    result = []
+
+    for r in rows:
+
+        revenue = safe_float(
+            r["revenue"]
+        )
+
+        food_cost = safe_float(
+            r["food_cost"]
+        )
+
+        profit = (
+            revenue -
+            food_cost
+        )
+
+        margin = (
+            profit /
+            revenue *
+            100
+            if revenue > 0
+            else 0
+        )
+
+        result.append({
+
+            "id":
+                r["id"],
+
+            "name":
+                r["name"],
+
+            "category":
+                r["category"] or
+                "Uncategorized",
+
+            "quantity_sold":
+                safe_int(
+                    r["quantity_sold"]
+                ),
+
+            "revenue":
+                round(
+                    revenue,
+                    2
+                ),
+
+            "food_cost":
+                round(
+                    food_cost,
+                    2
+                ),
+
+            "profit":
+                round(
+                    profit,
+                    2
+                ),
+
+            "margin_pct":
+                round(
+                    margin,
+                    1
+                )
+        })
+
+    return jsonify(result)
+
+
+# ========================================================
+# RECENT ORDERS
+# GET /api/dashboard/recent-orders
+# ========================================================
+
+@dashboard_bp.route("/recent-orders", methods=["GET"])
+@token_required
+def recent_orders():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    limit = get_limit(
+        request,
+        default=5,
+        maximum=20
+    )
+
+    rows = execute_query(
+        """
+        SELECT
+
+            o.id,
+
+            o.order_date::text AS date,
+
+            o.order_time::text AS time,
+
+            o.customer_phone,
+
+            o.platform,
+
+            o.total_amount,
+
+            o.status
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+        ORDER BY o.id DESC
+
+        LIMIT %s
+        """,
+        (kitchen_id, limit)
+    )
+
+    result = []
+
+    for r in rows:
+
+        order_id = safe_int(
+            r["id"]
+        )
+
+        result.append({
+
+            "id":
+                f"#ORD{order_id:04d}",
+
+            "customer":
+                r["customer_phone"] or
+                "Guest",
+
+            "platform":
+                r["platform"] or
+                "Unknown",
+
+            "amount":
+                round(
+                    safe_float(
+                        r["total_amount"]
+                    ),
+                    2
+                ),
+
+            "status":
+                (
+                    r["status"] or
+                    "pending"
+                ).lower(),
+
+            "date":
+                r["date"],
+
+            "time":
+                (
+                    str(r["time"])[:5]
+                    if r["time"]
+                    else ""
+                )
+        })
+
+    return jsonify(result)
+
+
+# ========================================================
+# PROFIT MARGINS
+# GET /api/dashboard/profit-margins
+# ========================================================
+
+@dashboard_bp.route("/profit-margins", methods=["GET"])
+@token_required
+def profit_margins():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            mi.id,
+
+            mi.name,
+
+            mi.category,
+
+            COALESCE(
+                SUM(oi.quantity),
+                0
+            ) AS quantity_sold,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    oi.unit_price *
+                    (
+                        1 -
+                        COALESCE(
+                            o.commission_pct,
+                            0
+                        ) / 100.0
+                    )
+                ),
+                0
+            ) AS net_revenue,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    COALESCE(
+                        mi.cost_price,
+                        0
+                    )
+                ),
+                0
+            ) AS total_cost
+
+        FROM menu_items mi
+
+        JOIN order_items oi
+            ON oi.menu_item_id = mi.id
+
+        JOIN orders o
+            ON o.id = oi.order_id
+
+        WHERE mi.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY
+            mi.id,
+            mi.name,
+            mi.category
+
+        HAVING SUM(oi.quantity) > 0
+
+        ORDER BY net_revenue DESC
+        """,
+        [kitchen_id] + dp
+    )
+
+    result = []
+
+    for r in rows:
+
+        revenue = safe_float(
+            r["net_revenue"]
+        )
+
+        cost = safe_float(
+            r["total_cost"]
+        )
+
+        profit = (
+            revenue -
+            cost
+        )
+
+        margin = (
+            profit /
+            revenue *
+            100
+            if revenue > 0
+            else 0
+        )
+
+        result.append({
+
+            "id":
+                r["id"],
+
+            "name":
+                r["name"],
+
+            "category":
+                r["category"] or
+                "Uncategorized",
+
+            "quantity_sold":
+                safe_int(
+                    r["quantity_sold"]
+                ),
+
+            "net_revenue":
+                round(
+                    revenue,
+                    2
+                ),
+
+            "total_cost":
+                round(
+                    cost,
+                    2
+                ),
+
+            "profit":
+                round(
+                    profit,
+                    2
+                ),
+
+            "margin_pct":
+                round(
+                    margin,
+                    1
+                )
+        })
+
+    return jsonify(result)
+
+
+# ========================================================
+# ALL DASHBOARD DATA
+# GET /api/dashboard/all
+# ========================================================
+
+@dashboard_bp.route("/all", methods=["GET"])
+@token_required
+def dashboard_all():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    # ====================================================
+    # 1. KPI DATA
+    # ====================================================
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    kpi_data = execute_one(
+        f"""
+        SELECT
+
+            COUNT(*) AS total_orders,
+
+            COUNT(*) FILTER (
+                WHERE o.status != 'cancelled'
+            ) AS completed_orders,
+
+            COUNT(*) FILTER (
+                WHERE o.status = 'cancelled'
+            ) AS cancelled_orders,
+
+            COALESCE(
+                SUM(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN o.status != 'cancelled'
+                        THEN
+                            o.total_amount *
+                            (
+                                1 -
+                                COALESCE(
+                                    o.commission_pct,
+                                    0
+                                ) / 100.0
+                            )
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS net_revenue,
+
+            COALESCE(
+                AVG(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS avg_order_value,
+
+            COUNT(
+                DISTINCT o.customer_phone
+            ) FILTER (
+                WHERE
+                    o.status != 'cancelled'
+                    AND o.customer_phone IS NOT NULL
+            ) AS unique_customers
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          {df}
+        """,
+        [kitchen_id] + dp
+    )
+
+    total_orders = safe_int(
+        kpi_data["total_orders"]
+    )
+
+    cancelled_orders = safe_int(
+        kpi_data["cancelled_orders"]
+    )
+
+    cancellation_rate = (
+        cancelled_orders /
+        max(total_orders, 1) *
+        100
+    )
+
+    # ====================================================
+    # 2. DAILY TREND
+    # ====================================================
+
+    trend_rows = execute_query(
+        f"""
+        SELECT
+
+            o.order_date::text AS date,
+
+            COUNT(*) FILTER (
+                WHERE o.status != 'cancelled'
+            ) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN o.status != 'cancelled'
+                        THEN
+                            o.total_amount *
+                            (
+                                1 -
+                                COALESCE(
+                                    o.commission_pct,
+                                    0
+                                ) / 100.0
+                            )
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS net_revenue
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          {df}
+
+        GROUP BY o.order_date
+
+        ORDER BY o.order_date
+        """,
+        [kitchen_id] + dp
+    )
+
+    # ====================================================
+    # 3. TOP DISHES
+    # ====================================================
+
+    top_dishes_rows = execute_query(
+        f"""
+        SELECT
+
+            mi.id,
+
+            mi.name,
+
+            mi.category,
+
+            COALESCE(
+                SUM(oi.quantity),
+                0
+            ) AS quantity_sold,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    oi.unit_price
+                ),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    COALESCE(
+                        mi.cost_price,
+                        0
+                    )
+                ),
+                0
+            ) AS food_cost
+
+        FROM menu_items mi
+
+        JOIN order_items oi
+            ON oi.menu_item_id = mi.id
+
+        JOIN orders o
+            ON o.id = oi.order_id
+
+        WHERE mi.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY
+            mi.id,
+            mi.name,
+            mi.category
+
+        HAVING SUM(oi.quantity) > 0
+
+        ORDER BY revenue DESC
+
+        LIMIT 5
+        """,
+        [kitchen_id] + dp
+    )
+
+    top_dishes_result = []
+
+    for r in top_dishes_rows:
+
+        revenue = safe_float(
+            r["revenue"]
+        )
+
+        cost = safe_float(
+            r["food_cost"]
+        )
+
+        profit = (
+            revenue -
+            cost
+        )
+
+        margin = (
+            profit /
+            revenue *
+            100
+            if revenue > 0
+            else 0
+        )
+
+        top_dishes_result.append({
+
+            "id":
+                r["id"],
+
+            "name":
+                r["name"],
+
+            "category":
+                r["category"] or
+                "Uncategorized",
+
+            "quantity_sold":
+                safe_int(
+                    r["quantity_sold"]
+                ),
+
+            "revenue":
+                round(
+                    revenue,
+                    2
+                ),
+
+            "food_cost":
+                round(
+                    cost,
+                    2
+                ),
+
+            "profit":
+                round(
+                    profit,
+                    2
+                ),
+
+            "margin_pct":
+                round(
+                    margin,
+                    1
+                )
+        })
+
+    # ====================================================
+    # 4. RECENT ORDERS
+    # ====================================================
+
+    recent_rows = execute_query(
+        """
+        SELECT
+
+            o.id,
+
+            o.order_date::text AS date,
+
+            o.order_time::text AS time,
+
+            o.customer_phone,
+
+            o.platform,
+
+            o.total_amount,
+
+            o.status
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+        ORDER BY o.id DESC
+
+        LIMIT 5
+        """,
+        (kitchen_id,)
+    )
+
+    recent_result = []
+
+    for r in recent_rows:
+
+        order_id = safe_int(
+            r["id"]
+        )
+
+        recent_result.append({
+
+            "id":
+                f"#ORD{order_id:04d}",
+
+            "customer":
+                r["customer_phone"] or
+                "Guest",
+
+            "platform":
+                r["platform"] or
+                "Unknown",
+
+            "amount":
+                round(
+                    safe_float(
+                        r["total_amount"]
+                    ),
+                    2
+                ),
+
+            "status":
+                (
+                    r["status"] or
+                    "pending"
+                ).lower(),
+
+            "date":
+                r["date"],
+
+            "time":
+                (
+                    str(r["time"])[:5]
+                    if r["time"]
+                    else ""
+                )
+        })
+
+    # ====================================================
+    # 5. RETURN EVERYTHING
+    # ====================================================
+
+    return jsonify({
+
+        "period_days":
+            days,
+
+        "kpis": {
+
+            "total_orders":
+                total_orders,
+
+            "completed_orders":
+                safe_int(
+                    kpi_data[
+                        "completed_orders"
+                    ]
+                ),
+
+            "cancelled_orders":
+                cancelled_orders,
+
+            "revenue":
+                round(
+                    safe_float(
+                        kpi_data["revenue"]
+                    ),
+                    2
+                ),
+
+            "net_revenue":
+                round(
+                    safe_float(
+                        kpi_data["net_revenue"]
+                    ),
+                    2
+                ),
+
+            "avg_order_value":
+                round(
+                    safe_float(
+                        kpi_data[
+                            "avg_order_value"
+                        ]
+                    ),
+                    2
+                ),
+
+            "unique_customers":
+                safe_int(
+                    kpi_data[
+                        "unique_customers"
+                    ]
+                ),
+
+            "cancellation_rate":
+                round(
+                    cancellation_rate,
+                    1
+                )
+        },
+
+        "trends": [
+
+            {
+                "date":
+                    r["date"],
+
+                "orders":
+                    safe_int(
+                        r["orders"]
+                    ),
+
+                "revenue":
+                    round(
+                        safe_float(
+                            r["revenue"]
+                        ),
+                        2
+                    ),
+
+                "net_revenue":
+                    round(
+                        safe_float(
+                            r["net_revenue"]
+                        ),
+                        2
+                    )
+            }
+
+            for r in trend_rows
+        ],
+
+        "top_dishes":
+            top_dishes_result,
+
+        "recent_orders":
+            recent_result
+    })
+
+
+# ========================================================
+# HEALTH / INFO
+# GET /api/dashboard
+# ========================================================
+
+@dashboard_bp.route("/", methods=["GET"])
+@token_required
+def dashboard_home():
+
+    return jsonify({
+        "service":
+            "KitchenIQ Dashboard",
+
+        "status":
+            "ok",
+
+        "endpoints": [
+            "/kpis",
+            "/trends",
+            "/top-dishes",
+            "/recent-orders",
+            "/profit-margins",
+            "/all"
+        ]
+    })
+
+
+### FILE: backend/routes/analytics.py
+-------------------------------------------
+"""
+========================================================
+KitchenIQ - Analytics Routes
+========================================================
+Revenue, Orders, Profit, Dish Margin, Peak Hours,
+Cancellations, Top Days and Recent Orders
+========================================================
+"""
+
+from flask import Blueprint, request, jsonify
+
+from middleware.auth import token_required
+from db.connection import execute_query, execute_one
+
+
+analytics_bp = Blueprint("analytics", __name__)
+
+
+# ========================================================
+# HELPERS
+# ========================================================
+
+def get_kitchen_id(request):
+    """
+    Get kitchen_id from query parameter.
+    If not provided, use the first kitchen belonging
+    to the authenticated user.
+    """
+
+    kitchen_id = request.args.get("kitchen_id")
+
+    if kitchen_id:
+        try:
+            return int(kitchen_id)
+        except (ValueError, TypeError):
+            pass
+
+    kitchen = execute_one(
+        """
+        SELECT id
+        FROM kitchens
+        WHERE user_id = %s
+        ORDER BY id
+        LIMIT 1
+        """,
+        (request.user_id,)
+    )
+
+    return kitchen["id"] if kitchen else None
+
+
+def get_days(request):
+    """
+    Get analytics period.
+
+    Examples:
+        ?days=7
+        ?days=30
+        ?days=90
+        ?days=all
+
+    Default = 30 days
+    """
+
+    days = request.args.get("days", "30")
+
+    if str(days).lower() == "all":
+        return None
+
+    try:
+        days = int(days)
+        return max(days, 1)
+    except (ValueError, TypeError):
+        return 30
+
+
+def date_filter(days, alias="o"):
+    """
+    Create reusable order_date filter.
+
+    IMPORTANT:
+    The orders table MUST use the same alias.
+
+    Example:
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+          {df}
+    """
+
+    if days is None:
+        return "", []
+
+    return (
+        f"AND {alias}.order_date >= "
+        f"CURRENT_DATE - INTERVAL '%s days'",
+        [days]
+    )
+
+
+def safe_float(value):
+    """
+    Safely convert PostgreSQL numeric/decimal values
+    into float.
+    """
+
+    try:
+        return float(value or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def safe_int(value):
+    """
+    Safely convert value into integer.
+    """
+
+    try:
+        return int(value or 0)
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_limit(request, default=10, maximum=50):
+    """
+    Safely read ?limit= parameter.
+    """
+
+    try:
+        limit = int(request.args.get("limit", default))
+        return max(1, min(limit, maximum))
+    except (ValueError, TypeError):
+        return default
+
+
+# ========================================================
+# SALES ANALYTICS
+# GET /api/analytics/sales
+# ========================================================
+
+@analytics_bp.route("/sales", methods=["GET"])
+@token_required
+def sales():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(days, alias="o")
+
+    # ----------------------------------------------------
+    # KPIs
+    # ----------------------------------------------------
+
+    kpis = execute_one(
+        f"""
+        SELECT
+
+            COUNT(*) AS total_orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS gross_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    (
+                        1 -
+                        COALESCE(o.commission_pct, 0) / 100.0
+                    )
+                ),
+                0
+            ) AS net_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    COALESCE(o.commission_pct, 0) / 100.0
+                ),
+                0
+            ) AS commission_paid,
+
+            COALESCE(
+                AVG(o.total_amount),
+                0
+            ) AS avg_order_value,
+
+            COUNT(DISTINCT o.customer_phone)
+                FILTER (
+                    WHERE o.customer_phone IS NOT NULL
+                ) AS unique_customers,
+
+            COUNT(*) FILTER (
+                WHERE o.status = 'cancelled'
+            ) AS cancelled_orders,
+
+            COUNT(*) AS all_orders
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+          {df}
+        """,
+        [kitchen_id] + dp
+    )
+
+    total_orders = safe_int(kpis["total_orders"])
+    cancelled_orders = safe_int(kpis["cancelled_orders"])
+
+    cancellation_rate = (
+        round(
+            cancelled_orders /
+            max(total_orders, 1) *
+            100,
+            1
+        )
+    )
+
+    # ----------------------------------------------------
+    # PLATFORM PERFORMANCE
+    # ----------------------------------------------------
+
+    platforms = execute_query(
+        f"""
+        SELECT
+
+            o.platform,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS gross_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    (
+                        1 -
+                        COALESCE(o.commission_pct, 0) / 100.0
+                    )
+                ),
+                0
+            ) AS net_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    COALESCE(o.commission_pct, 0) / 100.0
+                ),
+                0
+            ) AS commission_paid,
+
+            COALESCE(
+                AVG(o.commission_pct),
+                0
+            ) AS avg_commission_pct
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY o.platform
+
+        ORDER BY gross_revenue DESC
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify({
+
+        "period_days": days,
+
+        "kpis": {
+
+            "total_orders":
+                safe_int(kpis["total_orders"]),
+
+            "gross_revenue":
+                round(
+                    safe_float(kpis["gross_revenue"]),
+                    2
+                ),
+
+            "net_revenue":
+                round(
+                    safe_float(kpis["net_revenue"]),
+                    2
+                ),
+
+            "commission_paid":
+                round(
+                    safe_float(kpis["commission_paid"]),
+                    2
+                ),
+
+            "avg_order_value":
+                round(
+                    safe_float(kpis["avg_order_value"]),
+                    2
+                ),
+
+            "unique_customers":
+                safe_int(kpis["unique_customers"]),
+
+            "cancellation_rate":
+                cancellation_rate
+        },
+
+        "platforms": [
+
+            {
+                "platform":
+                    r["platform"] or "Unknown",
+
+                "orders":
+                    safe_int(r["orders"]),
+
+                "gross_revenue":
+                    round(
+                        safe_float(
+                            r["gross_revenue"]
+                        ),
+                        2
+                    ),
+
+                "net_revenue":
+                    round(
+                        safe_float(
+                            r["net_revenue"]
+                        ),
+                        2
+                    ),
+
+                "commission_paid":
+                    round(
+                        safe_float(
+                            r["commission_paid"]
+                        ),
+                        2
+                    ),
+
+                "avg_commission_pct":
+                    round(
+                        safe_float(
+                            r["avg_commission_pct"]
+                        ),
+                        1
+                    )
+            }
+
+            for r in platforms
+        ]
+    })
+
+
+# ========================================================
+# REVENUE TRENDS
+# GET /api/analytics/trends
+# ========================================================
+
+@analytics_bp.route("/trends", methods=["GET"])
+@token_required
+def trends():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(days, alias="o")
+
+    # ----------------------------------------------------
+    # DAILY
+    # ----------------------------------------------------
+
+    daily = execute_query(
+        f"""
+        SELECT
+
+            o.order_date::text AS date,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS gross_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    (
+                        1 -
+                        COALESCE(o.commission_pct, 0)
+                        / 100.0
+                    )
+                ),
+                0
+            ) AS net_revenue
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY o.order_date
+
+        ORDER BY o.order_date
+        """,
+        [kitchen_id] + dp
+    )
+
+    # ----------------------------------------------------
+    # WEEKLY
+    # ----------------------------------------------------
+
+    weekly = execute_query(
+        f"""
+        SELECT
+
+            DATE_TRUNC(
+                'week',
+                o.order_date
+            )::date::text AS week_start,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS gross_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    (
+                        1 -
+                        COALESCE(o.commission_pct, 0)
+                        / 100.0
+                    )
+                ),
+                0
+            ) AS net_revenue
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY DATE_TRUNC(
+            'week',
+            o.order_date
+        )
+
+        ORDER BY week_start
+        """,
+        [kitchen_id] + dp
+    )
+
+    # ----------------------------------------------------
+    # MONTHLY
+    # ----------------------------------------------------
+
+    monthly = execute_query(
+        f"""
+        SELECT
+
+            DATE_TRUNC(
+                'month',
+                o.order_date
+            )::date::text AS month_start,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS gross_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    (
+                        1 -
+                        COALESCE(o.commission_pct, 0)
+                        / 100.0
+                    )
+                ),
+                0
+            ) AS net_revenue
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY DATE_TRUNC(
+            'month',
+            o.order_date
+        )
+
+        ORDER BY month_start
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify({
+
+        "period_days": days,
+
+        "daily": [
+            dict(row)
+            for row in daily
+        ],
+
+        "weekly": [
+            dict(row)
+            for row in weekly
+        ],
+
+        "monthly": [
+            dict(row)
+            for row in monthly
+        ]
+    })
+
+
+# ========================================================
+# ORDERS TREND
+# GET /api/analytics/orders-trend
+# ========================================================
+
+@analytics_bp.route("/orders-trend", methods=["GET"])
+@token_required
+def orders_trend():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(days, alias="o")
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            o.order_date::text AS date,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                AVG(o.total_amount),
+                0
+            ) AS avg_value
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY o.order_date
+
+        ORDER BY o.order_date
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "date":
+                r["date"],
+
+            "orders":
+                safe_int(r["orders"]),
+
+            "avg_value":
+                round(
+                    safe_float(r["avg_value"]),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# PROFIT TREND
+# GET /api/analytics/profit-trend
+# ========================================================
+
+@analytics_bp.route("/profit-trend", methods=["GET"])
+@token_required
+def profit_trend():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(days, alias="o")
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            o.order_date::text AS date,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    (
+                        1 -
+                        COALESCE(o.commission_pct, 0)
+                        / 100.0
+                    )
+                ),
+                0
+            ) AS net_profit,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS gross_revenue,
+
+            COALESCE(
+                SUM(
+                    o.total_amount *
+                    COALESCE(o.commission_pct, 0)
+                    / 100.0
+                ),
+                0
+            ) AS commission
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY o.order_date
+
+        ORDER BY o.order_date
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "date":
+                r["date"],
+
+            "net_profit":
+                round(
+                    safe_float(
+                        r["net_profit"]
+                    ),
+                    2
+                ),
+
+            "gross_revenue":
+                round(
+                    safe_float(
+                        r["gross_revenue"]
+                    ),
+                    2
+                ),
+
+            "commission":
+                round(
+                    safe_float(
+                        r["commission"]
+                    ),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# MARGIN BY DISH
+# GET /api/analytics/margin-by-dish
+# ========================================================
+
+@analytics_bp.route("/margin-by-dish", methods=["GET"])
+@token_required
+def margin_by_dish():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    limit = get_limit(
+        request,
+        default=10,
+        maximum=30
+    )
+
+    df, dp = date_filter(days, alias="o")
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            mi.id,
+
+            mi.name,
+
+            mi.category,
+
+            COALESCE(
+                SUM(oi.quantity),
+                0
+            ) AS quantity_sold,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    oi.unit_price *
+                    (
+                        1 -
+                        COALESCE(
+                            o.commission_pct,
+                            0
+                        ) / 100.0
+                    )
+                ),
+                0
+            ) AS net_revenue,
+
+            COALESCE(
+                SUM(
+                    oi.quantity *
+                    COALESCE(
+                        mi.cost_price,
+                        0
+                    )
+                ),
+                0
+            ) AS total_cost
+
+        FROM menu_items mi
+
+        JOIN order_items oi
+            ON oi.menu_item_id = mi.id
+
+        JOIN orders o
+            ON o.id = oi.order_id
+
+        WHERE mi.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY
+            mi.id,
+            mi.name,
+            mi.category
+
+        HAVING SUM(oi.quantity) > 0
+
+        ORDER BY net_revenue DESC
+
+        LIMIT %s
+        """,
+        [kitchen_id] + dp + [limit]
+    )
+
+    result = []
+
+    for r in rows:
+
+        net_revenue = safe_float(
+            r["net_revenue"]
+        )
+
+        total_cost = safe_float(
+            r["total_cost"]
+        )
+
+        net_profit = (
+            net_revenue -
+            total_cost
+        )
+
+        margin_pct = (
+            net_profit /
+            net_revenue *
+            100
+            if net_revenue > 0
+            else 0
+        )
+
+        result.append({
+
+            "id":
+                r["id"],
+
+            "name":
+                r["name"],
+
+            "category":
+                r["category"] or
+                "Uncategorized",
+
+            "quantity_sold":
+                safe_int(
+                    r["quantity_sold"]
+                ),
+
+            "net_revenue":
+                round(
+                    net_revenue,
+                    2
+                ),
+
+            "total_cost":
+                round(
+                    total_cost,
+                    2
+                ),
+
+            "net_profit":
+                round(
+                    net_profit,
+                    2
+                ),
+
+            "margin_pct":
+                round(
+                    margin_pct,
+                    1
+                )
+        })
+
+    return jsonify(result)
+
+
+# ========================================================
+# PEAK HOURS
+# GET /api/analytics/peak-hours
+# ========================================================
+
+@analytics_bp.route("/peak-hours", methods=["GET"])
+@token_required
+def peak_hours():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(days, alias="o")
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            EXTRACT(
+                HOUR FROM o.order_time
+            )::int AS hour,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS revenue
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.order_time IS NOT NULL
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY EXTRACT(
+            HOUR FROM o.order_time
+        )
+
+        ORDER BY hour
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "hour":
+                safe_int(r["hour"]),
+
+            "orders":
+                safe_int(r["orders"]),
+
+            "revenue":
+                round(
+                    safe_float(
+                        r["revenue"]
+                    ),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# CANCELLATIONS
+# GET /api/analytics/cancellations
+# ========================================================
+
+@analytics_bp.route("/cancellations", methods=["GET"])
+@token_required
+def cancellations():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(days, alias="o")
+
+    # ----------------------------------------------------
+    # OVERALL CANCELLATION STATS
+    # ----------------------------------------------------
+
+    stats = execute_one(
+        f"""
+        SELECT
+
+            COUNT(*) FILTER (
+                WHERE o.status = 'cancelled'
+            ) AS cancelled,
+
+            COUNT(*) AS total
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          {df}
+        """,
+        [kitchen_id] + dp
+    )
+
+    cancelled = safe_int(
+        stats["cancelled"]
+    )
+
+    total = safe_int(
+        stats["total"]
+    )
+
+    cancellation_rate = (
+        round(
+            cancelled /
+            max(total, 1) *
+            100,
+            1
+        )
+    )
+
+    # ----------------------------------------------------
+    # CANCELLATIONS BY PLATFORM
+    # ----------------------------------------------------
+
+    by_platform = execute_query(
+        f"""
+        SELECT
+
+            o.platform,
+
+            COUNT(*) FILTER (
+                WHERE o.status = 'cancelled'
+            ) AS cancelled,
+
+            COUNT(*) AS total
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          {df}
+
+        GROUP BY o.platform
+
+        ORDER BY total DESC
+        """,
+        [kitchen_id] + dp
+    )
+
+    # ----------------------------------------------------
+    # NOTE:
+    # No real cancellation-reason column has been
+    # confirmed in the current orders schema.
+    #
+    # Therefore these are placeholder categories.
+    # Do NOT treat them as database-derived values.
+    # ----------------------------------------------------
+
+    reasons = [
+        {
+            "reason": "Customer Change",
+            "pct": 24
+        },
+        {
+            "reason": "Delivery Delay",
+            "pct": 22
+        },
+        {
+            "reason": "Restaurant Busy",
+            "pct": 20
+        },
+        {
+            "reason": "Payment Issue",
+            "pct": 18
+        },
+        {
+            "reason": "Other",
+            "pct": 16
+        }
+    ]
+
+    return jsonify({
+
+        "cancellation_rate":
+            cancellation_rate,
+
+        "cancelled_count":
+            cancelled,
+
+        "total_orders":
+            total,
+
+        "by_platform": [
+
+            {
+                "platform":
+                    r["platform"] or
+                    "Unknown",
+
+                "cancelled":
+                    safe_int(
+                        r["cancelled"]
+                    ),
+
+                "total":
+                    safe_int(
+                        r["total"]
+                    ),
+
+                "rate":
+                    round(
+                        safe_int(
+                            r["cancelled"]
+                        )
+                        /
+                        max(
+                            safe_int(
+                                r["total"]
+                            ),
+                            1
+                        )
+                        *
+                        100,
+                        1
+                    )
+            }
+
+            for r in by_platform
+        ],
+
+        "reasons":
+            reasons
+    })
+
+
+# ========================================================
+# TOP DAYS
+# GET /api/analytics/top-days
+# ========================================================
+
+@analytics_bp.route("/top-days", methods=["GET"])
+@token_required
+def top_days():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(days, alias="o")
+
+    # ----------------------------------------------------
+    # BEST DAYS
+    # ----------------------------------------------------
+
+    best = execute_query(
+        f"""
+        SELECT
+
+            o.order_date::text AS date,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS revenue
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY o.order_date
+
+        HAVING COUNT(*) >= 1
+
+        ORDER BY revenue DESC
+
+        LIMIT 5
+        """,
+        [kitchen_id] + dp
+    )
+
+    # ----------------------------------------------------
+    # WORST DAYS
+    # ----------------------------------------------------
+
+    worst = execute_query(
+        f"""
+        SELECT
+
+            o.order_date::text AS date,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS revenue
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          {df}
+
+        GROUP BY o.order_date
+
+        HAVING COUNT(*) >= 1
+
+        ORDER BY revenue ASC
+
+        LIMIT 5
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify({
+
+        "best_days": [
+
+            {
+                "date":
+                    r["date"],
+
+                "orders":
+                    safe_int(
+                        r["orders"]
+                    ),
+
+                "revenue":
+                    round(
+                        safe_float(
+                            r["revenue"]
+                        ),
+                        2
+                    )
+            }
+
+            for r in best
+        ],
+
+        "worst_days": [
+
+            {
+                "date":
+                    r["date"],
+
+                "orders":
+                    safe_int(
+                        r["orders"]
+                    ),
+
+                "revenue":
+                    round(
+                        safe_float(
+                            r["revenue"]
+                        ),
+                        2
+                    )
+            }
+
+            for r in worst
+        ]
+    })
+
+
+# ========================================================
+# RECENT ORDERS
+# GET /api/analytics/recent-orders
+# ========================================================
+
+@analytics_bp.route("/recent-orders", methods=["GET"])
+@token_required
+def recent_orders():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    limit = get_limit(
+        request,
+        default=5,
+        maximum=20
+    )
+
+    rows = execute_query(
+        """
+        SELECT
+
+            o.id,
+
+            o.order_date::text AS date,
+
+            o.order_time::text AS time,
+
+            o.customer_phone,
+
+            o.total_amount,
+
+            o.status
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+        ORDER BY o.id DESC
+
+        LIMIT %s
+        """,
+        (kitchen_id, limit)
+    )
+
+    result = []
+
+    for r in rows:
+
+        order_id = safe_int(
+            r["id"]
+        )
+
+        order_time = (
+            str(r["time"])[:5]
+            if r["time"]
+            else ""
+        )
+
+        result.append({
+
+            "id":
+                f"#ORD{order_id:04d}",
+
+            "customer":
+                r["customer_phone"] or
+                "Guest",
+
+            "amount":
+                round(
+                    safe_float(
+                        r["total_amount"]
+                    ),
+                    2
+                ),
+
+            "status":
+                (
+                    r["status"] or
+                    "pending"
+                ).lower(),
+
+            "date":
+                r["date"],
+
+            "time":
+                order_time
+        })
+
+    return jsonify(result)
+
+
+
+### FILE: backend/routes/recommendations.py
+-------------------------------------------
+"""
+Recommendations Routes
+Updated for KitchenIQ Insights page
+"""
+from flask import Blueprint, request, jsonify
+from middleware.auth import token_required
+from db.connection import execute_query, execute_one
+from services.insights_engine import generate_insights
+
+recommendations_bp = Blueprint('recommendations', __name__)
+
+
+# ==========================================
+# HELPERS
+# ==========================================
+def get_kitchen_id(request):
+    kitchen_id = request.args.get('kitchen_id')
+    if kitchen_id:
+        try:
+            return int(kitchen_id)
+        except (ValueError, TypeError):
+            pass
+
+    kitchen = execute_one(
+        "SELECT id FROM kitchens WHERE user_id = %s ORDER BY id LIMIT 1",
+        (request.user_id,)
+    )
+    return kitchen['id'] if kitchen else None
+
+
+def get_days(request):
+    days = request.args.get('days', '30')
+    if days == 'all':
+        return None
+    try:
+        return int(days)
+    except ValueError:
+        return 30
+
+
+def get_type_filter(request):
+    """Map frontend filter to backend type."""
+    f = request.args.get('filter', 'all')
+    reverse_map = {
+        'promote': 'success',
+        'opportunity': 'info',
+        'optimize': 'warning',
+        'review': 'danger'
+    }
+    return reverse_map.get(f)  # None if 'all'
+
+
+# ==========================================
+# ALL INSIGHTS
+# ==========================================
+@recommendations_bp.route('/insights', methods=['GET'])
+@token_required
+def insights():
+    """
+    All insights, sorted by impact score.
+    Optional filter: ?filter=promote|opportunity|optimize|review
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    type_filter = get_type_filter(request)
+
+    all_insights = generate_insights(kitchen_id, days)
+
+    if type_filter:
+        all_insights = [i for i in all_insights if i.get('type') == type_filter]
+
+    return jsonify(all_insights)
+
+
+# ==========================================
+# SUMMARY (Counts by type)
+# ==========================================
+@recommendations_bp.route('/summary', methods=['GET'])
+@token_required
+def summary():
+    """
+    Counts by type and category.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    all_insights = generate_insights(kitchen_id, days)
+
+    by_type = {'success': 0, 'info': 0, 'warning': 0, 'danger': 0}
+    by_category = {}
+
+    for i in all_insights:
+        by_type[i.get('type', 'info')] = by_type.get(i.get('type', 'info'), 0) + 1
+        cat = i.get('category', 'Other')
+        by_category[cat] = by_category.get(cat, 0) + 1
+
+    return jsonify({
+        'total': len(all_insights),
+        'by_type': by_type,
+        'by_category': by_category
+    })
+
+
+# ==========================================
+# TOP N (For dashboard widget)
+# ==========================================
+@recommendations_bp.route('/top', methods=['GET'])
+@token_required
+def top():
+    """
+    Top N insights for dashboard widget.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    limit = min(int(request.args.get('limit', 4)), 20)
+
+    all_insights = generate_insights(kitchen_id, days)
+    return jsonify(all_insights[:limit])
+
+
+# ==========================================
+# ADDITIONAL INSIGHTS (Insights page bottom)
+# ==========================================
+@recommendations_bp.route('/additional', methods=['GET'])
+@token_required
+def additional():
+    """
+    Additional observations — smaller insights for the bottom section.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    result = []
+
+    # ─── 1. Best hour to promote ───
+    hours = execute_query("""
+        SELECT
+            EXTRACT(HOUR FROM order_time)::int AS hour,
+            COUNT(*) AS orders
+        FROM orders
+        WHERE kitchen_id = %s
+          AND order_time IS NOT NULL
+          AND status != 'cancelled'
+        GROUP BY hour
+        ORDER BY orders DESC
+        LIMIT 1
+    """, (kitchen_id,))
+
+    if hours:
+        hr = hours[0]['hour']
+        if hr == 0:
+            label = '12 AM'
+        elif hr < 12:
+            label = f'{hr} AM'
+        elif hr == 12:
+            label = '12 PM'
+        else:
+            label = f'{hr - 12} PM'
+
+        result.append({
+            'icon': '⏰',
+            'text': f'Best time to promote: {label}',
+            'sub': f'Peak ordering hour ({hours[0]["orders"]} orders)'
+        })
+
+    # ─── 2. Top performing dish ───
+    top_dish = execute_one("""
+        SELECT
+            mi.name,
+            SUM(oi.quantity * oi.unit_price) AS revenue
+        FROM menu_items mi
+        JOIN order_items oi ON oi.menu_item_id = mi.id
+        JOIN orders o ON o.id = oi.order_id
+        WHERE mi.kitchen_id = %s
+          AND o.status != 'cancelled'
+        GROUP BY mi.id, mi.name
+        ORDER BY revenue DESC
+        LIMIT 1
+    """, (kitchen_id,))
+
+    if top_dish:
+        result.append({
+            'icon': '🍛',
+            'text': f'Top performing: {top_dish["name"]}',
+            'sub': f'Highest revenue: ₹{float(top_dish["revenue"]):,.0f}'
+        })
+
+    # ─── 3. Lowest margin dish ───
+    low_margin = execute_one("""
+        SELECT
+            mi.name,
+            SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)) AS net_rev,
+            SUM(oi.quantity * mi.cost_price) AS cost
+        FROM menu_items mi
+        JOIN order_items oi ON oi.menu_item_id = mi.id
+        JOIN orders o ON o.id = oi.order_id
+        WHERE mi.kitchen_id = %s
+          AND o.status != 'cancelled'
+        GROUP BY mi.id, mi.name
+        HAVING SUM(oi.quantity) > 0
+        ORDER BY (
+            SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0))
+            - SUM(oi.quantity * mi.cost_price)
+        ) / NULLIF(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0)
+        ASC
+        LIMIT 1
+    """, (kitchen_id,))
+
+    if low_margin:
+        net_rev = float(low_margin['net_rev'] or 0)
+        cost = float(low_margin['cost'] or 0)
+        margin = ((net_rev - cost) / net_rev * 100) if net_rev > 0 else 0
+        result.append({
+            'icon': '📉',
+            'text': f'Lowest margin: {low_margin["name"]}',
+            'sub': f'Only {margin:.1f}% — consider repricing'
+        })
+
+    # ─── 4. Repeat rate ───
+    repeat = execute_one("""
+        WITH stats AS (
+            SELECT customer_phone, COUNT(*) AS freq
+            FROM orders
+            WHERE kitchen_id = %s
+              AND customer_phone IS NOT NULL
+              AND status != 'cancelled'
+            GROUP BY customer_phone
+        )
+        SELECT
+            COUNT(*) FILTER (WHERE freq >= 2)::float
+                / NULLIF(COUNT(*), 0) * 100 AS repeat_pct
+        FROM stats
+    """, (kitchen_id,))
+
+    if repeat and repeat['repeat_pct']:
+        result.append({
+            'icon': '👥',
+            'text': f'Loyal customers are {float(repeat["repeat_pct"]):.1f}% of your base',
+            'sub': 'Focus on retention campaigns'
+        })
+
+    # ─── 5. Missing recipes ───
+    missing = execute_one("""
+        SELECT COUNT(*) AS c
+        FROM menu_items mi
+        WHERE mi.kitchen_id = %s
+          AND mi.is_active = TRUE
+          AND NOT EXISTS (
+              SELECT 1 FROM recipes r WHERE r.menu_item_id = mi.id
+          )
+    """, (kitchen_id,))
+
+    if missing and missing['c'] > 0:
+        result.append({
+            'icon': '⚠️',
+            'text': f'{missing["c"]} dishes need recipe costing',
+            'sub': 'Add recipes to see true profitability'
+        })
+
+    # ─── 6. Best day of week ───
+    best_day = execute_one("""
+        SELECT
+            TO_CHAR(order_date, 'Day') AS day_name,
+            COUNT(*) AS orders
+        FROM orders
+        WHERE kitchen_id = %s
+          AND status != 'cancelled'
+        GROUP BY TO_CHAR(order_date, 'Day'), EXTRACT(DOW FROM order_date)
+        ORDER BY orders DESC
+        LIMIT 1
+    """, (kitchen_id,))
+
+    if best_day:
+        result.append({
+            'icon': '📅',
+            'text': f'Best day: {best_day["day_name"].strip()}',
+            'sub': f'{best_day["orders"]} orders on this day'
+        })
+
+    return jsonify(result)
+
+
+# ==========================================
+# CATEGORIES (For filter dropdown)
+# ==========================================
+@recommendations_bp.route('/categories', methods=['GET'])
+@token_required
+def categories():
+    """
+    Available insight categories.
+    """
+    return jsonify([
+        'Menu', 'Commission', 'Delivery', 'Operations',
+        'Customers', 'Inventory', 'Revenue'
+    ])
+
+
+
+### FILE: backend/routes/items.py
+-------------------------------------------
+"""
+Item Performance Routes
+Profitability, menu engineering, best/worst, CSV export.
+"""
+from flask import Blueprint, request, jsonify, Response
+from middleware.auth import token_required
+from db.connection import execute_query, execute_one
+import csv
+import io
+
+items_bp = Blueprint('items', __name__)
+
+
+def get_kitchen_id(request):
+    """Helper: get kitchen_id from query params or user's default."""
+    kitchen_id = request.args.get('kitchen_id')
+    if kitchen_id:
+        try:
+            return int(kitchen_id)
+        except (ValueError, TypeError):
+            pass
+
+    kitchen = execute_one(
+        "SELECT id FROM kitchens WHERE user_id = %s ORDER BY id LIMIT 1",
+        (request.user_id,)
+    )
+    return kitchen['id'] if kitchen else None
+
+
+def get_date_range(request):
+    """Helper: extract days filter (default 30)."""
+    days = request.args.get('days', '30')
+    if days == 'all':
+        return None
+    try:
+        return int(days)
+    except ValueError:
+        return 30
+
+
+def build_date_filter(days):
+    """Helper: returns SQL condition and params."""
+    if days is None:
+        return "", []
+    return "AND o.order_date >= CURRENT_DATE - INTERVAL '%s days'", [days]
+
+
+def classify_menu_item(quantity_sold, profit_margin, avg_qty, avg_margin):
+    """
+    Classify item into Star/Plowhorse/Puzzle/Dog.
+    Based on median thresholds.
+    """
+    high_popularity = quantity_sold > avg_qty
+    high_margin = profit_margin > avg_margin
+
+    if high_popularity and high_margin:
+        return 'Star'
+    elif high_popularity and not high_margin:
+        return 'Plowhorse'
+    elif not high_popularity and high_margin:
+        return 'Puzzle'
+    else:
+        return 'Dog'
+
+
+# ==========================================
+# ENDPOINT 1: Item Performance (main data)
+# ==========================================
+@items_bp.route('/performance', methods=['GET'])
+@token_required
+def item_performance():
+    """
+    Returns all items with:
+    - quantity_sold, gross_revenue, net_revenue
+    - cost, net_profit, profit_margin
+    - avg_prep_time
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_date_range(request)
+    date_sql, date_params = build_date_filter(days)
+
+    sql = f"""
+        SELECT
+            mi.id,
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            mi.cost_price,
+            mi.selling_price,
+            mi.prep_time_minutes AS default_prep_time,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS gross_revenue,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost,
+            COALESCE(AVG(o.prep_time_minutes), mi.prep_time_minutes) AS avg_prep_time
+        FROM menu_items mi
+        LEFT JOIN order_items oi ON oi.menu_item_id = mi.id
+        LEFT JOIN orders o ON o.id = oi.order_id
+            AND o.status != 'cancelled'
+            {date_sql}
+        WHERE mi.kitchen_id = %s
+        GROUP BY mi.id, mi.name, mi.category,
+                 mi.cost_price, mi.selling_price, mi.prep_time_minutes
+        ORDER BY net_revenue DESC
+    """
+
+    params = date_params + [kitchen_id]
+    rows = execute_query(sql, params)
+
+    items = []
+    for row in rows:
+        r = dict(row)
+        net_rev = float(r['net_revenue'] or 0)
+        total_cost = float(r['total_cost'] or 0)
+        qty = int(r['quantity_sold'] or 0)
+        net_profit = net_rev - total_cost
+        margin = (net_profit / net_rev * 100) if net_rev > 0 else 0
+
+        r['net_revenue'] = round(net_rev, 2)
+        r['total_cost'] = round(total_cost, 2)
+        r['net_profit'] = round(net_profit, 2)
+        r['profit_margin'] = round(margin, 1)
+        r['gross_revenue'] = round(float(r['gross_revenue'] or 0), 2)
+        r['avg_prep_time'] = int(r['avg_prep_time'] or 15)
+
+        items.append(r)
+
+    return jsonify(items)
+
+
+# ==========================================
+# ENDPOINT 2: Best & Worst Items
+# ==========================================
+@items_bp.route('/best-worst', methods=['GET'])
+@token_required
+def best_worst_items():
+    """
+    Returns top 5 (best) and bottom 5 (worst) items by net profit.
+    Only considers items with quantity_sold > 0.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_date_range(request)
+    date_sql, date_params = build_date_filter(days)
+
+    sql = f"""
+        SELECT
+            mi.id,
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS gross_revenue,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost
+        FROM menu_items mi
+        JOIN order_items oi ON oi.menu_item_id = mi.id
+        JOIN orders o ON o.id = oi.order_id
+            AND o.status != 'cancelled'
+            {date_sql}
+        WHERE mi.kitchen_id = %s
+        GROUP BY mi.id, mi.name, mi.category
+        HAVING SUM(oi.quantity) > 0
+    """
+
+    params = date_params + [kitchen_id]
+    rows = execute_query(sql, params)
+
+    items = []
+    for row in rows:
+        r = dict(row)
+        net_rev = float(r['net_revenue'] or 0)
+        total_cost = float(r['total_cost'] or 0)
+        net_profit = net_rev - total_cost
+        margin = (net_profit / net_rev * 100) if net_rev > 0 else 0
+
+        r['net_revenue'] = round(net_rev, 2)
+        r['net_profit'] = round(net_profit, 2)
+        r['profit_margin'] = round(margin, 1)
+        r['gross_revenue'] = round(float(r['gross_revenue'] or 0), 2)
+        items.append(r)
+
+    # Sort by net profit
+    sorted_items = sorted(items, key=lambda x: x['net_profit'], reverse=True)
+
+    best = sorted_items[:5]
+    worst = sorted_items[-5:][::-1] if len(sorted_items) >= 5 else sorted_items[::-1]
+
+    return jsonify({
+        'best': best,
+        'worst': worst,
+        'total_items': len(items)
+    })
+
+
+# ==========================================
+# ENDPOINT 3: Menu Engineering
+# ==========================================
+@items_bp.route('/menu-engineering', methods=['GET'])
+@token_required
+def menu_engineering():
+    """
+    Classify items into Stars / Plowhorses / Puzzles / Dogs.
+    Uses median thresholds for popularity and margin.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_date_range(request)
+    date_sql, date_params = build_date_filter(days)
+
+    sql = f"""
+        SELECT
+            mi.id,
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS gross_revenue,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost
+        FROM menu_items mi
+        JOIN order_items oi ON oi.menu_item_id = mi.id
+        JOIN orders o ON o.id = oi.order_id
+            AND o.status != 'cancelled'
+            {date_sql}
+        WHERE mi.kitchen_id = %s
+        GROUP BY mi.id, mi.name, mi.category
+        HAVING SUM(oi.quantity) > 0
+    """
+
+    params = date_params + [kitchen_id]
+    rows = execute_query(sql, params)
+
+    if not rows:
+        return jsonify({
+            'stars': [], 'plowhorses': [], 'puzzles': [], 'dogs': [],
+            'thresholds': {'popularity': 0, 'margin': 0}
+        })
+
+    # Compute metrics for each item
+    items = []
+    for row in rows:
+        r = dict(row)
+        net_rev = float(r['net_revenue'] or 0)
+        total_cost = float(r['total_cost'] or 0)
+        net_profit = net_rev - total_cost
+        margin = (net_profit / net_rev * 100) if net_rev > 0 else 0
+
+        r['quantity_sold'] = int(r['quantity_sold'] or 0)
+        r['gross_revenue'] = round(float(r['gross_revenue'] or 0), 2)
+        r['net_revenue'] = round(net_rev, 2)
+        r['net_profit'] = round(net_profit, 2)
+        r['profit_margin'] = round(margin, 1)
+        items.append(r)
+
+    # Median thresholds
+    quantities = sorted([i['quantity_sold'] for i in items])
+    margins = sorted([i['profit_margin'] for i in items])
+
+    def median(arr):
+        n = len(arr)
+        if n == 0:
+            return 0
+        return arr[n // 2] if n % 2 == 1 else (arr[n // 2 - 1] + arr[n // 2]) / 2
+
+    threshold_qty = median(quantities)
+    threshold_margin = median(margins)
+
+    # Classify
+    result = {'stars': [], 'plowhorses': [], 'puzzles': [], 'dogs': []}
+    for item in items:
+        category = classify_menu_item(
+            item['quantity_sold'],
+            item['profit_margin'],
+            threshold_qty,
+            threshold_margin
+        )
+        item['engineering_category'] = category
+        key = category.lower() + 's'
+        result[key].append(item)
+
+    # Sort within each category
+    for key in result:
+        if key in ['stars', 'puzzles']:
+            result[key].sort(key=lambda x: x['net_profit'], reverse=True)
+        else:
+            result[key].sort(key=lambda x: x['net_profit'], reverse=True)
+
+    return jsonify({
+        **result,
+        'thresholds': {
+            'popularity': round(threshold_qty, 1),
+            'margin': round(threshold_margin, 1)
+        },
+        'summary': {
+            'stars': len(result['stars']),
+            'plowhorses': len(result['plowhorses']),
+            'puzzles': len(result['puzzles']),
+            'dogs': len(result['dogs'])
+        }
+    })
+
+
+# ==========================================
+# ENDPOINT 4: CSV Export
+# ==========================================
+@items_bp.route('/export', methods=['GET'])
+@token_required
+def export_items_csv():
+    """Download item performance as CSV."""
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_date_range(request)
+    date_sql, date_params = build_date_filter(days)
+
+    sql = f"""
+        SELECT
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            mi.cost_price,
+            mi.selling_price,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS gross_revenue,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost
+        FROM menu_items mi
+        LEFT JOIN order_items oi ON oi.menu_item_id = mi.id
+        LEFT JOIN orders o ON o.id = oi.order_id
+            AND o.status != 'cancelled'
+            {date_sql}
+        WHERE mi.kitchen_id = %s
+        GROUP BY mi.id, mi.name, mi.category, mi.cost_price, mi.selling_price
+        ORDER BY net_revenue DESC
+    """
+
+    params = date_params + [kitchen_id]
+    rows = execute_query(sql, params)
+
+    # Build CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        'Item Name', 'Category', 'Cost Price', 'Selling Price',
+        'Quantity Sold', 'Gross Revenue', 'Net Revenue',
+        'Total Cost', 'Net Profit', 'Profit Margin (%)'
+    ])
+
+    for row in rows:
+        net_rev = float(row['net_revenue'] or 0)
+        total_cost = float(row['total_cost'] or 0)
+        net_profit = net_rev - total_cost
+        margin = (net_profit / net_rev * 100) if net_rev > 0 else 0
+
+        writer.writerow([
+            row['name'],
+            row['category'],
+            float(row['cost_price'] or 0),
+            float(row['selling_price'] or 0),
+            int(row['quantity_sold'] or 0),
+            float(row['gross_revenue'] or 0),
+            round(net_rev, 2),
+            round(total_cost, 2),
+            round(net_profit, 2),
+            round(margin, 1)
+        ])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': 'attachment; filename=item-performance.csv'
+        }
+    )
+
+
+# ═══════════════════════════════════════════
+# NEW: CATEGORIES (Dishes filter dropdown)
+# ═══════════════════════════════════════════
+@items_bp.route('/categories', methods=['GET'])
+@token_required
+def list_categories():
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    rows = execute_query("""
+        SELECT DISTINCT category
+        FROM menu_items
+        WHERE kitchen_id = %s
+          AND category IS NOT NULL
+          AND category != ''
+          AND is_active = TRUE
+        ORDER BY category
+    """, (kitchen_id,))
+
+    return jsonify([r['category'] for r in rows])
+
+
+
+    """
+Items / Dishes Routes
+Updated for KitchenIQ Dishes page
+"""
+from flask import Blueprint, request, jsonify, Response
+from middleware.auth import token_required
+from db.connection import execute_query, execute_one
+import csv
+import io
+
+items_bp = Blueprint('items', __name__)
+
+
+# ==========================================
+# HELPERS
+# ==========================================
+def get_kitchen_id(request):
+    kitchen_id = request.args.get('kitchen_id')
+    if kitchen_id:
+        try:
+            return int(kitchen_id)
+        except (ValueError, TypeError):
+            pass
+
+    kitchen = execute_one(
+        "SELECT id FROM kitchens WHERE user_id = %s ORDER BY id LIMIT 1",
+        (request.user_id,)
+    )
+    return kitchen['id'] if kitchen else None
+
+
+def get_days(request):
+    days = request.args.get('days', '30')
+    if days == 'all':
+        return None
+    try:
+        return int(days)
+    except ValueError:
+        return 30
+
+
+def date_filter(days, alias='o'):
+    if days is None:
+        return "", []
+    return f"AND {alias}.order_date >= CURRENT_DATE - INTERVAL '%s days'", [days]
+
+
+def get_recommendation(margin_pct, orders):
+    """
+    Determine recommendation category based on margin and volume.
+    Matches frontend logic.
+    """
+    if margin_pct >= 40 and orders >= 100:
+        return 'promote'
+    if margin_pct >= 40 and orders < 100:
+        return 'growth'
+    if margin_pct < 30 and orders >= 100:
+        return 'optimize'
+    return 'review'
+
+
+# ==========================================
+# PERFORMANCE (Main Dishes table)
+# ==========================================
+@items_bp.route('/performance', methods=['GET'])
+@token_required
+def performance():
+    """
+    All dishes with performance metrics.
+    Used by: Dishes page main table, Dashboard top dishes
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    df, dp = date_filter(days)
+
+    rows = execute_query(f"""
+        SELECT
+            mi.id,
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            mi.cost_price,
+            mi.selling_price,
+            mi.prep_time_minutes,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS gross_revenue,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost
+        FROM menu_items mi
+        LEFT JOIN order_items oi ON oi.menu_item_id = mi.id
+        LEFT JOIN orders o ON o.id = oi.order_id
+            AND o.status != 'cancelled'
+            {df}
+        WHERE mi.kitchen_id = %s
+          AND mi.is_active = TRUE
+        GROUP BY mi.id, mi.name, mi.category, mi.cost_price,
+                 mi.selling_price, mi.prep_time_minutes
+        ORDER BY net_revenue DESC
+    """, dp + [kitchen_id])
+
+    result = []
+    for r in rows:
+        net_rev = float(r['net_revenue'] or 0)
+        cost = float(r['total_cost'] or 0)
+        qty = int(r['quantity_sold'] or 0)
+        profit = net_rev - cost
+        margin = (profit / net_rev * 100) if net_rev > 0 else 0
+        food_cost_pct = (cost / net_rev * 100) if net_rev > 0 else 0
+
+        # Simulated rating based on prep time (faster = better, cap 3.5-5.0)
+        prep = int(r['prep_time_minutes'] or 15)
+        rating = round(max(3.5, min(5.0, 5.0 - (prep - 10) * 0.03)), 1)
+
+        result.append({
+            'id': r['id'],
+            'name': r['name'],
+            'category': r['category'],
+            'cost_price': round(float(r['cost_price'] or 0), 2),
+            'selling_price': round(float(r['selling_price'] or 0), 2),
+            'prep_time_minutes': prep,
+            'quantity_sold': qty,
+            'gross_revenue': round(float(r['gross_revenue'] or 0), 2),
+            'net_revenue': round(net_rev, 2),
+            'total_cost': round(cost, 2),
+            'net_profit': round(profit, 2),
+            'profit_margin': round(margin, 1),
+            'food_cost_pct': round(food_cost_pct, 1),
+            'rating': rating,
+            'recommendation': get_recommendation(margin, qty)
+        })
+
+    return jsonify(result)
+
+
+# ==========================================
+# CATEGORIES (Filter dropdown)
+# ==========================================
+@items_bp.route('/categories', methods=['GET'])
+@token_required
+def categories():
+    """
+    Get unique categories for filter dropdown.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify([])
+
+    rows = execute_query("""
+        SELECT DISTINCT category
+        FROM menu_items
+        WHERE kitchen_id = %s
+          AND category IS NOT NULL
+          AND category != ''
+          AND is_active = TRUE
+        ORDER BY category
+    """, (kitchen_id,))
+
+    return jsonify([r['category'] for r in rows])
+
+
+# ==========================================
+# BEST & WORST
+# ==========================================
+@items_bp.route('/best-worst', methods=['GET'])
+@token_required
+def best_worst():
+    """
+    Top 5 + Bottom 5 dishes by profit.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    df, dp = date_filter(days)
+
+    rows = execute_query(f"""
+        SELECT
+            mi.id,
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS gross_revenue,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost
+        FROM menu_items mi
+        JOIN order_items oi ON oi.menu_item_id = mi.id
+        JOIN orders o ON o.id = oi.order_id
+        WHERE mi.kitchen_id = %s
+          AND o.status != 'cancelled'
+          {df}
+        GROUP BY mi.id, mi.name, mi.category
+        HAVING SUM(oi.quantity) > 0
+    """, [kitchen_id] + dp)
+
+    items = []
+    for r in rows:
+        net_rev = float(r['net_revenue'] or 0)
+        cost = float(r['total_cost'] or 0)
+        profit = net_rev - cost
+        margin = (profit / net_rev * 100) if net_rev > 0 else 0
+        items.append({
+            'id': r['id'],
+            'name': r['name'],
+            'category': r['category'],
+            'quantity_sold': int(r['quantity_sold'] or 0),
+            'net_revenue': round(net_rev, 2),
+            'net_profit': round(profit, 2),
+            'profit_margin': round(margin, 1)
+        })
+
+    sorted_items = sorted(items, key=lambda x: x['net_profit'], reverse=True)
+    best = sorted_items[:5]
+    worst = sorted_items[-5:][::-1] if len(sorted_items) >= 5 else sorted_items[::-1]
+
+    return jsonify({
+        'best': best,
+        'worst': worst,
+        'total_items': len(items)
+    })
+
+
+# ==========================================
+# MENU ENGINEERING
+# ==========================================
+@items_bp.route('/menu-engineering', methods=['GET'])
+@token_required
+def menu_engineering():
+    """
+    Classify dishes into Stars/Plowhorses/Puzzles/Dogs.
+    """
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    df, dp = date_filter(days)
+
+    rows = execute_query(f"""
+        SELECT
+            mi.id,
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost
+        FROM menu_items mi
+        JOIN order_items oi ON oi.menu_item_id = mi.id
+        JOIN orders o ON o.id = oi.order_id
+        WHERE mi.kitchen_id = %s
+          AND o.status != 'cancelled'
+          {df}
+        GROUP BY mi.id, mi.name, mi.category
+        HAVING SUM(oi.quantity) > 0
+    """, [kitchen_id] + dp)
+
+    if not rows:
+        return jsonify({
+            'stars': [], 'plowhorses': [], 'puzzles': [], 'dogs': [],
+            'thresholds': {'popularity': 0, 'margin': 0}
+        })
+
+    items = []
+    for r in rows:
+        net_rev = float(r['net_revenue'] or 0)
+        cost = float(r['total_cost'] or 0)
+        profit = net_rev - cost
+        margin = (profit / net_rev * 100) if net_rev > 0 else 0
+
+        items.append({
+            'id': r['id'],
+            'name': r['name'],
+            'category': r['category'],
+            'quantity_sold': int(r['quantity_sold'] or 0),
+            'net_revenue': round(net_rev, 2),
+            'net_profit': round(profit, 2),
+            'profit_margin': round(margin, 1)
+        })
+
+    # Median thresholds
+    quantities = sorted([i['quantity_sold'] for i in items])
+    margins = sorted([i['profit_margin'] for i in items])
+
+    def median(arr):
+        n = len(arr)
+        if n == 0:
+            return 0
+        return arr[n // 2] if n % 2 else (arr[n // 2 - 1] + arr[n // 2]) / 2
+
+    t_qty = median(quantities)
+    t_margin = median(margins)
+
+    buckets = {'stars': [], 'plowhorses': [], 'puzzles': [], 'dogs': []}
+
+    for item in items:
+        high_pop = item['quantity_sold'] > t_qty
+        high_margin = item['profit_margin'] > t_margin
+
+        if high_pop and high_margin:
+            item['category_eng'] = 'Star'
+            buckets['stars'].append(item)
+        elif high_pop and not high_margin:
+            item['category_eng'] = 'Plowhorse'
+            buckets['plowhorses'].append(item)
+        elif not high_pop and high_margin:
+            item['category_eng'] = 'Puzzle'
+            buckets['puzzles'].append(item)
+        else:
+            item['category_eng'] = 'Dog'
+            buckets['dogs'].append(item)
+
+    return jsonify({
+        'stars': buckets['stars'],
+        'plowhorses': buckets['plowhorses'],
+        'puzzles': buckets['puzzles'],
+        'dogs': buckets['dogs'],
+        'thresholds': {
+            'popularity': round(t_qty, 1),
+            'margin': round(t_margin, 1)
+        }
+    })
+
+
+# ==========================================
+# EXPORT CSV
+# ==========================================
+@items_bp.route('/export', methods=['GET'])
+@token_required
+def export_items():
+    """Export dishes as CSV."""
+    kitchen_id = get_kitchen_id(request)
+    if not kitchen_id:
+        return jsonify({'error': 'No kitchen found'}), 404
+
+    days = get_days(request)
+    df, dp = date_filter(days)
+
+    rows = execute_query(f"""
+        SELECT
+            mi.name,
+            COALESCE(mi.category, 'Uncategorized') AS category,
+            mi.cost_price,
+            mi.selling_price,
+            COALESCE(SUM(oi.quantity), 0) AS quantity_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS gross_revenue,
+            COALESCE(SUM(oi.quantity * oi.unit_price * (1 - o.commission_pct/100.0)), 0) AS net_revenue,
+            COALESCE(SUM(oi.quantity * mi.cost_price), 0) AS total_cost
+        FROM menu_items mi
+        LEFT JOIN order_items oi ON oi.menu_item_id = mi.id
+        LEFT JOIN orders o ON o.id = oi.order_id
+            AND o.status != 'cancelled'
+            {df}
+        WHERE mi.kitchen_id = %s
+        GROUP BY mi.id, mi.name, mi.category, mi.cost_price, mi.selling_price
+        ORDER BY net_revenue DESC
+    """, dp + [kitchen_id])
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Dish', 'Category', 'Cost Price', 'Selling Price',
+        'Quantity Sold', 'Gross Revenue', 'Net Revenue',
+        'Total Cost', 'Net Profit', 'Margin %'
+    ])
+
+    for r in rows:
+        net_rev = float(r['net_revenue'] or 0)
+        cost = float(r['total_cost'] or 0)
+        profit = net_rev - cost
+        margin = (profit / net_rev * 100) if net_rev > 0 else 0
+
+        writer.writerow([
+            r['name'],
+            r['category'],
+            float(r['cost_price'] or 0),
+            float(r['selling_price'] or 0),
+            int(r['quantity_sold'] or 0),
+            round(float(r['gross_revenue'] or 0), 2),
+            round(net_rev, 2),
+            round(cost, 2),
+            round(profit, 2),
+            round(margin, 1)
+        ])
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=dishes.csv'}
+    )
+
+
+### FILE: backend/routes/customers.py
+-------------------------------------------
+"""
+========================================================
+KitchenIQ - Customer Analytics Routes
+========================================================
+Customer KPIs, Segments, RFM, Top Customers,
+Repeat Rate, Overview and Platform Preference
+========================================================
+"""
+
+from flask import Blueprint, request, jsonify
+
+from middleware.auth import token_required
+from db.connection import execute_query, execute_one
+
+
+customers_bp = Blueprint("customers", __name__)
+
+
+# ========================================================
+# HELPERS
+# ========================================================
+
+def get_kitchen_id(request):
+    """
+    Get kitchen_id from query parameter.
+    If not provided, use the first kitchen belonging
+    to the authenticated user.
+    """
+
+    kitchen_id = request.args.get("kitchen_id")
+
+    if kitchen_id:
+        try:
+            return int(kitchen_id)
+        except (ValueError, TypeError):
+            pass
+
+    kitchen = execute_one(
+        """
+        SELECT id
+        FROM kitchens
+        WHERE user_id = %s
+        ORDER BY id
+        LIMIT 1
+        """,
+        (request.user_id,)
+    )
+
+    return kitchen["id"] if kitchen else None
+
+
+def get_days(request):
+    """
+    Get analytics period.
+
+    Supported:
+        ?days=7
+        ?days=30
+        ?days=90
+        ?days=all
+
+    Default = 30 days.
+    """
+
+    days = request.args.get("days", "30")
+
+    if str(days).lower() == "all":
+        return None
+
+    try:
+        days = int(days)
+        return max(days, 1)
+    except (ValueError, TypeError):
+        return 30
+
+
+def date_filter(days, alias="o"):
+    """
+    Generate reusable order date filter.
+
+    IMPORTANT:
+    Any query using this filter must use the same
+    orders table alias.
+
+        FROM orders o
+
+    """
+
+    if days is None:
+        return "", []
+
+    return (
+        f"AND {alias}.order_date >= "
+        f"CURRENT_DATE - INTERVAL '%s days'",
+        [days]
+    )
+
+
+def safe_float(value):
+    try:
+        return float(value or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def safe_int(value):
+    try:
+        return int(value or 0)
+    except (ValueError, TypeError):
+        return 0
+
+
+# ========================================================
+# CUSTOMER KPIs
+# GET /api/customers/kpis
+# ========================================================
+
+@customers_bp.route("/kpis", methods=["GET"])
+@token_required
+def kpis():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    result = execute_one(
+        f"""
+        WITH customer_orders AS (
+
+            SELECT
+
+                o.customer_phone,
+
+                COUNT(*) AS order_count,
+
+                COALESCE(
+                    SUM(o.total_amount),
+                    0
+                ) AS total_spend
+
+            FROM orders o
+
+            WHERE o.kitchen_id = %s
+
+              AND o.status != 'cancelled'
+
+              AND o.customer_phone IS NOT NULL
+
+              {df}
+
+            GROUP BY o.customer_phone
+        )
+
+        SELECT
+
+            COUNT(*) AS total_customers,
+
+            COUNT(*) FILTER (
+                WHERE order_count = 1
+            ) AS one_time_customers,
+
+            COUNT(*) FILTER (
+                WHERE order_count >= 2
+            ) AS repeat_customers,
+
+            COALESCE(
+                SUM(total_spend),
+                0
+            ) AS customer_revenue,
+
+            COALESCE(
+                AVG(total_spend),
+                0
+            ) AS avg_customer_value,
+
+            COALESCE(
+                AVG(order_count),
+                0
+            ) AS avg_orders_per_customer
+
+        FROM customer_orders
+        """,
+        [kitchen_id] + dp
+    )
+
+    total_customers = safe_int(
+        result["total_customers"]
+    )
+
+    repeat_customers = safe_int(
+        result["repeat_customers"]
+    )
+
+    repeat_rate = (
+        repeat_customers /
+        max(total_customers, 1) *
+        100
+    )
+
+    return jsonify({
+
+        "period_days":
+            days,
+
+        "total_customers":
+            total_customers,
+
+        "one_time_customers":
+            safe_int(
+                result[
+                    "one_time_customers"
+                ]
+            ),
+
+        "repeat_customers":
+            repeat_customers,
+
+        "repeat_rate":
+            round(
+                repeat_rate,
+                1
+            ),
+
+        "customer_revenue":
+            round(
+                safe_float(
+                    result[
+                        "customer_revenue"
+                    ]
+                ),
+                2
+            ),
+
+        "avg_customer_value":
+            round(
+                safe_float(
+                    result[
+                        "avg_customer_value"
+                    ]
+                ),
+                2
+            ),
+
+        "avg_orders_per_customer":
+            round(
+                safe_float(
+                    result[
+                        "avg_orders_per_customer"
+                    ]
+                ),
+                2
+            )
+    })
+
+
+# ========================================================
+# CUSTOMER SEGMENTS
+# GET /api/customers/segments
+# ========================================================
+
+@customers_bp.route("/segments", methods=["GET"])
+@token_required
+def segments():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    rows = execute_query(
+        f"""
+        WITH customer_data AS (
+
+            SELECT
+
+                o.customer_phone,
+
+                COUNT(*) AS orders,
+
+                COALESCE(
+                    SUM(o.total_amount),
+                    0
+                ) AS revenue,
+
+                MAX(o.order_date) AS last_order
+
+            FROM orders o
+
+            WHERE o.kitchen_id = %s
+
+              AND o.status != 'cancelled'
+
+              AND o.customer_phone IS NOT NULL
+
+              {df}
+
+            GROUP BY o.customer_phone
+        ),
+
+        classified AS (
+
+            SELECT
+
+                customer_phone,
+
+                orders,
+
+                revenue,
+
+                last_order,
+
+                CASE
+
+                    WHEN orders >= 5
+                         AND revenue >= 5000
+                        THEN 'VIP'
+
+                    WHEN orders >= 3
+                         AND revenue >= 2500
+                        THEN 'Loyal'
+
+                    WHEN orders >= 2
+                        THEN 'Repeat'
+
+                    WHEN orders = 1
+                        THEN 'New'
+
+                    ELSE 'Other'
+
+                END AS segment
+
+            FROM customer_data
+        )
+
+        SELECT
+
+            segment,
+
+            COUNT(*) AS customers,
+
+            COALESCE(
+                SUM(orders),
+                0
+            ) AS orders,
+
+            COALESCE(
+                SUM(revenue),
+                0
+            ) AS revenue
+
+        FROM classified
+
+        GROUP BY segment
+
+        ORDER BY revenue DESC
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "segment":
+                r["segment"] or
+                "Other",
+
+            "customers":
+                safe_int(
+                    r["customers"]
+                ),
+
+            "orders":
+                safe_int(
+                    r["orders"]
+                ),
+
+            "revenue":
+                round(
+                    safe_float(
+                        r["revenue"]
+                    ),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# CUSTOMER VALUE DISTRIBUTION
+# GET /api/customers/value-distribution
+# ========================================================
+
+@customers_bp.route(
+    "/value-distribution",
+    methods=["GET"]
+)
+@token_required
+def value_distribution():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    rows = execute_query(
+        f"""
+        WITH customer_value AS (
+
+            SELECT
+
+                o.customer_phone,
+
+                COALESCE(
+                    SUM(o.total_amount),
+                    0
+                ) AS total_spend
+
+            FROM orders o
+
+            WHERE o.kitchen_id = %s
+
+              AND o.status != 'cancelled'
+
+              AND o.customer_phone IS NOT NULL
+
+              {df}
+
+            GROUP BY o.customer_phone
+        )
+
+        SELECT
+
+            CASE
+
+                WHEN total_spend < 500
+                    THEN '₹0 - ₹499'
+
+                WHEN total_spend < 1000
+                    THEN '₹500 - ₹999'
+
+                WHEN total_spend < 2500
+                    THEN '₹1,000 - ₹2,499'
+
+                WHEN total_spend < 5000
+                    THEN '₹2,500 - ₹4,999'
+
+                ELSE '₹5,000+'
+
+            END AS value_range,
+
+            COUNT(*) AS customers,
+
+            COALESCE(
+                SUM(total_spend),
+                0
+            ) AS revenue
+
+        FROM customer_value
+
+        GROUP BY value_range
+
+        ORDER BY
+            MIN(total_spend)
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "range":
+                r["value_range"],
+
+            "value_range":
+                r["value_range"],
+
+            "customers":
+                safe_int(
+                    r["customers"]
+                ),
+
+            "revenue":
+                round(
+                    safe_float(
+                        r["revenue"]
+                    ),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# RFM ANALYSIS
+# GET /api/customers/rfm
+# ========================================================
+
+@customers_bp.route("/rfm", methods=["GET"])
+@token_required
+def rfm():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    rows = execute_query(
+        f"""
+        WITH customer_rfm AS (
+
+            SELECT
+
+                o.customer_phone,
+
+                CURRENT_DATE -
+                MAX(o.order_date)
+                AS recency_days,
+
+                COUNT(*) AS frequency,
+
+                COALESCE(
+                    SUM(o.total_amount),
+                    0
+                ) AS monetary
+
+            FROM orders o
+
+            WHERE o.kitchen_id = %s
+
+              AND o.status != 'cancelled'
+
+              AND o.customer_phone IS NOT NULL
+
+              {df}
+
+            GROUP BY o.customer_phone
+        )
+
+        SELECT
+
+            CASE
+
+                WHEN recency_days <= 7
+                     AND frequency >= 5
+                    THEN 'Champions'
+
+                WHEN recency_days <= 14
+                     AND frequency >= 3
+                    THEN 'Loyal Customers'
+
+                WHEN recency_days <= 30
+                     AND frequency >= 2
+                    THEN 'Potential Loyalists'
+
+                WHEN recency_days <= 60
+                    THEN 'At Risk'
+
+                ELSE 'Lost'
+
+            END AS rfm_segment,
+
+            COUNT(*) AS customers,
+
+            COALESCE(
+                SUM(monetary),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                AVG(frequency),
+                0
+            ) AS avg_frequency,
+
+            COALESCE(
+                AVG(monetary),
+                0
+            ) AS avg_monetary
+
+        FROM customer_rfm
+
+        GROUP BY rfm_segment
+
+        ORDER BY revenue DESC
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "segment":
+                r["rfm_segment"],
+
+            "rfm_segment":
+                r["rfm_segment"],
+
+            "customers":
+                safe_int(
+                    r["customers"]
+                ),
+
+            "revenue":
+                round(
+                    safe_float(
+                        r["revenue"]
+                    ),
+                    2
+                ),
+
+            "avg_frequency":
+                round(
+                    safe_float(
+                        r["avg_frequency"]
+                    ),
+                    2
+                ),
+
+            "avg_monetary":
+                round(
+                    safe_float(
+                        r["avg_monetary"]
+                    ),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# TOP CUSTOMERS
+# GET /api/customers/top
+# ========================================================
+
+@customers_bp.route("/top", methods=["GET"])
+@token_required
+def top_customers():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    try:
+        limit = int(
+            request.args.get(
+                "limit",
+                10
+            )
+        )
+
+        limit = max(
+            1,
+            min(limit, 50)
+        )
+
+    except (ValueError, TypeError):
+        limit = 10
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    rows = execute_query(
+        f"""
+        SELECT
+
+            o.customer_phone,
+
+            COUNT(*) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS total_spend,
+
+            COALESCE(
+                AVG(o.total_amount),
+                0
+            ) AS avg_order_value,
+
+            MAX(o.order_date)::text
+                AS last_order_date,
+
+            MIN(o.order_date)::text
+                AS first_order_date
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          AND o.customer_phone IS NOT NULL
+
+          {df}
+
+        GROUP BY o.customer_phone
+
+        ORDER BY total_spend DESC
+
+        LIMIT %s
+        """,
+        [kitchen_id] + dp + [limit]
+    )
+
+    result = []
+
+    for index, r in enumerate(rows, start=1):
+
+        result.append({
+
+            "rank":
+                index,
+
+            "customer":
+                r["customer_phone"],
+
+            "customer_phone":
+                r["customer_phone"],
+
+            "orders":
+                safe_int(
+                    r["orders"]
+                ),
+
+            "total_spend":
+                round(
+                    safe_float(
+                        r["total_spend"]
+                    ),
+                    2
+                ),
+
+            "revenue":
+                round(
+                    safe_float(
+                        r["total_spend"]
+                    ),
+                    2
+                ),
+
+            "avg_order_value":
+                round(
+                    safe_float(
+                        r["avg_order_value"]
+                    ),
+                    2
+                ),
+
+            "last_order_date":
+                r["last_order_date"],
+
+            "first_order_date":
+                r["first_order_date"]
+        })
+
+    return jsonify(result)
+
+
+# ========================================================
+# REPEAT RATE
+# GET /api/customers/repeat-rate
+# ========================================================
+
+@customers_bp.route(
+    "/repeat-rate",
+    methods=["GET"]
+)
+@token_required
+def repeat_rate():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    result = execute_one(
+        f"""
+        WITH customer_orders AS (
+
+            SELECT
+
+                o.customer_phone,
+
+                COUNT(*) AS order_count
+
+            FROM orders o
+
+            WHERE o.kitchen_id = %s
+
+              AND o.status != 'cancelled'
+
+              AND o.customer_phone IS NOT NULL
+
+              {df}
+
+            GROUP BY o.customer_phone
+        )
+
+        SELECT
+
+            COUNT(*) AS total_customers,
+
+            COUNT(*) FILTER (
+                WHERE order_count >= 2
+            ) AS repeat_customers,
+
+            COUNT(*) FILTER (
+                WHERE order_count = 1
+            ) AS one_time_customers
+
+        FROM customer_orders
+        """,
+        [kitchen_id] + dp
+    )
+
+    total = safe_int(
+        result["total_customers"]
+    )
+
+    repeat = safe_int(
+        result["repeat_customers"]
+    )
+
+    one_time = safe_int(
+        result["one_time_customers"]
+    )
+
+    rate = (
+        repeat /
+        max(total, 1) *
+        100
+    )
+
+    return jsonify({
+
+        "period_days":
+            days,
+
+        "total_customers":
+            total,
+
+        "repeat_customers":
+            repeat,
+
+        "one_time_customers":
+            one_time,
+
+        "repeat_rate":
+            round(
+                rate,
+                1
+            )
+    })
+
+
+# ========================================================
+# CUSTOMER OVERVIEW
+# GET /api/customers/overview
+# ========================================================
+
+@customers_bp.route(
+    "/overview",
+    methods=["GET"]
+)
+@token_required
+def overview():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    result = execute_one(
+        f"""
+        SELECT
+
+            COUNT(
+                DISTINCT o.customer_phone
+            ) FILTER (
+                WHERE o.customer_phone IS NOT NULL
+            ) AS customers,
+
+            COUNT(*) FILTER (
+                WHERE o.status != 'cancelled'
+            ) AS orders,
+
+            COALESCE(
+                SUM(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS revenue,
+
+            COALESCE(
+                AVG(o.total_amount)
+                FILTER (
+                    WHERE o.status != 'cancelled'
+                ),
+                0
+            ) AS avg_order_value,
+
+            COUNT(
+                DISTINCT o.customer_phone
+            ) FILTER (
+                WHERE
+                    o.customer_phone IS NOT NULL
+                    AND o.status != 'cancelled'
+            ) AS active_customers
+
+        FROM orders o
+
+        WHERE o.kitchen_id = %s
+
+          {df}
+        """,
+        [kitchen_id] + dp
+    )
+
+    return jsonify({
+
+        "period_days":
+            days,
+
+        "customers":
+            safe_int(
+                result["customers"]
+            ),
+
+        "orders":
+            safe_int(
+                result["orders"]
+            ),
+
+        "revenue":
+            round(
+                safe_float(
+                    result["revenue"]
+                ),
+                2
+            ),
+
+        "avg_order_value":
+            round(
+                safe_float(
+                    result["avg_order_value"]
+                ),
+                2
+            ),
+
+        "active_customers":
+            safe_int(
+                result["active_customers"]
+            )
+    })
+
+
+# ========================================================
+# PLATFORM PREFERENCE
+# GET /api/customers/platform-preference
+# ========================================================
+
+@customers_bp.route(
+    "/platform-preference",
+    methods=["GET"]
+)
+@token_required
+def platform_preference():
+
+    kitchen_id = get_kitchen_id(request)
+
+    if not kitchen_id:
+        return jsonify({
+            "error": "No kitchen found"
+        }), 404
+
+    days = get_days(request)
+
+    df, dp = date_filter(
+        days,
+        alias="o"
+    )
+
+    # ----------------------------------------------------
+    # Find customers with 2+ orders
+    # ----------------------------------------------------
+
+    rows = execute_query(
+        f"""
+        WITH repeat_customers AS (
+
+            SELECT
+
+                o.customer_phone
+
+            FROM orders o
+
+            WHERE o.kitchen_id = %s
+
+              AND o.status != 'cancelled'
+
+              AND o.customer_phone IS NOT NULL
+
+              {df}
+
+            GROUP BY o.customer_phone
+
+            HAVING COUNT(*) >= 2
+        )
+
+        SELECT
+
+            o.platform,
+
+            COUNT(*) AS orders,
+
+            COUNT(
+                DISTINCT o.customer_phone
+            ) AS customers,
+
+            COALESCE(
+                SUM(o.total_amount),
+                0
+            ) AS revenue
+
+        FROM orders o
+
+        JOIN repeat_customers rc
+
+            ON rc.customer_phone =
+               o.customer_phone
+
+        WHERE o.kitchen_id = %s
+
+          AND o.status != 'cancelled'
+
+          AND o.customer_phone IS NOT NULL
+
+          {df}
+
+        GROUP BY o.platform
+
+        ORDER BY orders DESC
+        """,
+        [kitchen_id] + dp +
+        [kitchen_id] + dp
+    )
+
+    return jsonify([
+
+        {
+            "platform":
+                r["platform"] or
+                "Unknown",
+
+            "orders":
+                safe_int(
+                    r["orders"]
+                ),
+
+            "customers":
+                safe_int(
+                    r["customers"]
+                ),
+
+            "revenue":
+                round(
+                    safe_float(
+                        r["revenue"]
+                    ),
+                    2
+                )
+        }
+
+        for r in rows
+    ])
+
+
+# ========================================================
+# CUSTOMER HOME / INFO
+# GET /api/customers/
+# ========================================================
+
+@customers_bp.route(
+    "/",
+    methods=["GET"]
+)
+@token_required
+def customers_home():
+
+    return jsonify({
+
+        "service":
+            "KitchenIQ Customer Analytics",
+
+        "status":
+            "ok",
+
+        "endpoints": [
+
+            "/kpis",
+
+            "/segments",
+
+            "/value-distribution",
+
+            "/rfm",
+
+            "/top",
+
+            "/repeat-rate",
+
+            "/overview",
+
+            "/platform-preference"
+        ]
+    })
+
+
+
+### FILE: backend/routes/auth.py
+-------------------------------------------
+from flask import Blueprint, request, jsonify, current_app
+from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
+import datetime
+from db.connection import execute_query, execute_one
+from middleware.auth import token_required
+
+auth_bp = Blueprint('auth', __name__)
+
+
+def create_token(user_id, email):
+    """Generate JWT token."""
+    return jwt.encode({
+        'user_id': user_id,
+        'email': email,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7)
+    }, current_app.config['SECRET_KEY'], algorithm='HS256')
+
+
+@auth_bp.route('/signup', methods=['POST'])
+def signup():
+    """User registration."""
+    data = request.get_json() or {}
+
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    full_name = data.get('full_name', '').strip()
+    kitchen_name = data.get('kitchen_name', '').strip()
+    city = data.get('city', '').strip()
+
+    # Validation
+    errors = []
+    if not email or '@' not in email:
+        errors.append('Valid email required')
+    if len(password) < 6:
+        errors.append('Password must be at least 6 characters')
+    if not kitchen_name:
+        errors.append('Kitchen name required')
+
+    if errors:
+        return jsonify({'errors': errors}), 400
+
+    # Check existing user
+    existing = execute_one("SELECT id FROM users WHERE email = %s", (email,))
+    if existing:
+        return jsonify({'error': 'Email already registered'}), 409
+
+    # Hash password
+    password_hash = generate_password_hash(password)
+
+    # Insert user
+    user = execute_one(
+        """INSERT INTO users (email, password_hash, full_name)
+           VALUES (%s, %s, %s) RETURNING id, email, full_name""",
+        (email, password_hash, full_name or email.split('@')[0])
+    )
+
+    # Create default kitchen
+    kitchen = execute_one(
+        """INSERT INTO kitchens (user_id, name, city)
+           VALUES (%s, %s, %s) RETURNING id, name, city""",
+        (user['id'], kitchen_name, city or 'Unknown')
+    )
+
+    # Generate token
+    token = create_token(user['id'], user['email'])
+
+    return jsonify({
+        'message': 'Account created successfully',
+        'token': token,
+        'user': {
+            'id': user['id'],
+            'email': user['email'],
+            'full_name': user['full_name']
+        },
+        'kitchen': {
+            'id': kitchen['id'],
+            'name': kitchen['name'],
+            'city': kitchen['city']
+        }
+    }), 201
+
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """User login."""
+    data = request.get_json() or {}
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+
+    # Find user
+    user = execute_one(
+        """SELECT id, email, password_hash, full_name
+           FROM users WHERE email = %s""",
+        (email,)
+    )
+
+    if not user:
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    if not check_password_hash(user['password_hash'], password):
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    # Get kitchen
+    kitchen = execute_one(
+        """SELECT id, name, city FROM kitchens
+           WHERE user_id = %s AND is_active = TRUE
+           ORDER BY id LIMIT 1""",
+        (user['id'],)
+    )
+
+    token = create_token(user['id'], user['email'])
+
+    return jsonify({
+        'message': 'Login successful',
+        'token': token,
+        'user': {
+            'id': user['id'],
+            'email': user['email'],
+            'full_name': user['full_name']
+        },
+        'kitchen': {
+            'id': kitchen['id'],
+            'name': kitchen['name'],
+            'city': kitchen['city']
+        } if kitchen else None
+    })
+
+
+@auth_bp.route('/me', methods=['GET'])
+@token_required
+def get_current_user():
+    """Get current user info."""
+    user = execute_one(
+        """SELECT id, email, full_name, created_at
+           FROM users WHERE id = %s""",
+        (request.user_id,)
+    )
+    kitchens = execute_query(
+        """SELECT id, name, city, is_active
+           FROM kitchens WHERE user_id = %s ORDER BY id""",
+        (request.user_id,)
+    )
+
+    return jsonify({
+        'user': dict(user) if user else None,
+        'kitchens': [dict(k) for k in kitchens]
+    })
+
+
+
+
+### FILE: backend/routes/upload.py
+-------------------------------------------
+"""
+CSV Upload Routes
+Handles order data ingestion.
+"""
+from flask import Blueprint, request, jsonify
+from middleware.auth import token_required
+from services.csv_processor import process_orders_csv, CSVValidationError
+from db.connection import execute_query
+import pandas as pd
+import io
+
+upload_bp = Blueprint('upload', __name__)
+
+
+@upload_bp.route('/csv', methods=['POST'])
+@token_required
+def upload_csv():
+    """
+    Upload CSV file with order data.
+    Expects: multipart/form-data with 'file' and 'kitchen_id'
+    """
+    # Check file present
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['file']
+
+    if not file.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+
+    if not file.filename.lower().endswith('.csv'):
+        return jsonify({'error': 'Only .csv files are allowed'}), 400
+
+    # Get kitchen_id (from form or use default)
+    kitchen_id = request.form.get('kitchen_id')
+    if not kitchen_id:
+        # Fallback: get user's first kitchen
+        kitchens = execute_query(
+            "SELECT id FROM kitchens WHERE user_id = %s ORDER BY id LIMIT 1",
+            (request.user_id,)
+        )
+        if not kitchens:
+            return jsonify({'error': 'No kitchen found for user'}), 404
+        kitchen_id = kitchens[0]['id']
+    else:
+        try:
+            kitchen_id = int(kitchen_id)
+        except ValueError:
+            return jsonify({'error': 'Invalid kitchen_id'}), 400
+
+    # Verify kitchen belongs to user
+    kitchen = execute_query(
+        "SELECT id FROM kitchens WHERE id = %s AND user_id = %s",
+        (kitchen_id, request.user_id)
+    )
+    if not kitchen:
+        return jsonify({'error': 'Kitchen not found or access denied'}), 403
+
+    # Parse CSV
+    try:
+        content = file.read()
+
+        # Try UTF-8 first
+        try:
+            text = content.decode('utf-8')
+        except UnicodeDecodeError:
+            # Try latin-1 fallback
+            text = content.decode('latin-1')
+
+        df = pd.read_csv(io.StringIO(text))
+
+    except pd.errors.EmptyDataError:
+        return jsonify({'error': 'CSV file is empty'}), 400
+    except pd.errors.ParserError as e:
+        return jsonify({'error': f'CSV parsing error: {str(e)}'}), 400
+    except Exception as e:
+        return jsonify({'error': f'Failed to read CSV: {str(e)}'}), 400
+
+    # Process
+    try:
+        stats = process_orders_csv(df, kitchen_id)
+    except CSVValidationError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
+
+    return jsonify({
+        'message': 'Upload successful',
+        'kitchen_id': kitchen_id,
+        'stats': stats
+    }), 201
+
+
+@upload_bp.route('/history', methods=['GET'])
+@token_required
+def upload_history():
+    """Get upload history for user's kitchens."""
+    uploads = execute_query("""
+        SELECT u.id, u.filename, u.rows_inserted, u.rows_failed,
+               u.uploaded_at, k.name AS kitchen_name
+        FROM uploads u
+        JOIN kitchens k ON k.id = u.kitchen_id
+        WHERE k.user_id = %s
+        ORDER BY u.uploaded_at DESC
+        LIMIT 20
+    """, (request.user_id,))
+
+    return jsonify([dict(u) for u in uploads])
+
+
+@upload_bp.route('/template', methods=['GET'])
+def download_template():
+    """Return CSV template as response."""
+    template = (
+        "order_date,order_time,platform,customer_phone,item_name,"
+        "quantity,unit_price,commission_pct,prep_time,delivery_time,status\n"
+        "2026-01-15,19:30,Swiggy,9876543210,Paneer Tikka,2,300,25,15,35,delivered\n"
+        "2026-01-15,20:15,Zomato,9876543211,Chicken Biryani,1,350,28,20,40,delivered\n"
+        "2026-01-15,21:00,Swiggy,9876543212,Dal Makhani,1,250,25,12,30,delivered\n"
+    )
+
+    return jsonify({
+        'template': template,
+        'columns': {
+            'required': ['order_date', 'platform', 'item_name', 'quantity', 'unit_price'],
+            'optional': ['order_time', 'customer_phone', 'commission_pct',
+                         'prep_time', 'delivery_time', 'status']
+        }
+    })
+
+
+
+### FILE: backend/middleware/auth.py
+-------------------------------------------
+from functools import wraps
+from flask import request, jsonify, current_app
+import jwt
+
+
+def token_required(f):
+    """Decorator to protect routes requiring JWT."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        # Get token from header
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '')
+
+        # Also check for JSON body token
+        if not token and request.is_json:
+            token = request.json.get('token')
+
+        if not token:
+            return jsonify({'error': 'Authentication token missing'}), 401
+
+        try:
+            data = jwt.decode(
+                token,
+                current_app.config['SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            request.user_id = data['user_id']
+            request.user_email = data.get('email', '')
+
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token expired. Please login again.'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        return f(*args, **kwargs)
+    return decorated
+
+
+
+### FILE: backend/db/connection.py
+-------------------------------------------
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2 import pool
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Connection pool for performance
+_db_pool = None
+
+def init_pool():
+    """Initialize connection pool."""
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=os.getenv('DATABASE_URL')
+        )
+    return _db_pool
+
+
+def get_db_connection():
+    """Get connection from pool."""
+    global _db_pool
+    if _db_pool is None:
+        init_pool()
+    return _db_pool.getconn()
+
+
+def release_db_connection(conn):
+    """Return connection to pool."""
+    if _db_pool and conn:
+        _db_pool.putconn(conn)
+
+
+def execute_query(query, params=None, fetch=True):
+    """Execute a query and return results."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        cur.execute(query, params or ())
+
+        if fetch:
+            result = cur.fetchall()
+            conn.commit()  # IMPORTANT: commit INSERT/UPDATE/DELETE
+            return result
+
+        conn.commit()
+        return True
+
+    except Exception as e:
+        conn.rollback()
+        raise e
+
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+def execute_one(query, params=None):
+    """Execute query and return single row."""
+    result = execute_query(query, params, fetch=True)
+    return result[0] if result else None
+
+
+### FILE: frontend/js/dashboard.js
+-------------------------------------------
+/* ==========================================
+   KITCHENIQ DASHBOARD
+   Data + Charts + Rendering
+   Clean Single Version
+   ========================================== */
+
+
+/* ==========================================
+   GLOBAL STATE
+   ========================================== */
+
+let trendChart = null;
+let peakHoursChart = null;
+let customerChart = null;
+
+let currentTrendView = 'daily';
+let cachedTrends = null;
+
+
+/* ==========================================
+   COLORS
+   ========================================== */
+
+const COLORS = {
+    primary: '#2563eb',
+    profit: '#10b981',
+    warning: '#f59e0b',
+    danger: '#ef4444',
+    purple: '#8b5cf6',
+    swiggy: '#fc8019',
+    zomato: '#e23744',
+    direct: '#10b981'
+};
+
+
+/* ==========================================
+   LOAD DASHBOARD
+   ========================================== */
+
+async function loadDashboard() {
+
+    const filter = document.getElementById('daysFilter');
+
+    const days = filter?.value || '30';
+
+    try {
+
+        /*
+         * Main dashboard API
+         *
+         * Expected response:
+         *
+         * {
+         *   kpis: {...},
+         *   trends: [...],
+         *   top_dishes: [...],
+         *   recent_orders: [...],
+         *   profit_margins: [...],
+         *   peak_hours: [...],
+         *   customer_overview: {...}
+         * }
+         */
+
+        const data = await apiFetch(
+            `/api/dashboard/all?days=${encodeURIComponent(days)}`
+        );
+
+
+        if (!data) {
+            throw new Error('No dashboard data received');
+        }
+
+
+        /* ======================================
+           KPI
+           ====================================== */
+
+        renderKpis(data.kpis);
+
+
+        /* ======================================
+           TREND CHART
+           ====================================== */
+
+        cachedTrends = data.trends ?? null;
+
+        renderTrendChart();
+
+
+        /* ======================================
+           TOP DISHES
+           ====================================== */
+
+        renderTopDishes(
+            data.top_dishes
+        );
+
+
+        /* ======================================
+           RECENT ORDERS
+           ====================================== */
+
+        renderRecentOrders(
+            data.recent_orders
+        );
+
+
+        /* ======================================
+           PROFIT MARGINS
+           ====================================== */
+
+        renderProfitMargins(
+            data.profit_margins
+        );
+
+
+        /* ======================================
+           PEAK HOURS
+           ====================================== */
+
+        if (Array.isArray(data.peak_hours)) {
+
+            renderPeakHours(
+                data.peak_hours
+            );
+
+        }
+
+
+        /* ======================================
+           CUSTOMER OVERVIEW
+           ====================================== */
+
+        if (data.customer_overview) {
+
+            renderCustomerChart(
+                data.customer_overview
+            );
+
+        }
+
+
+        /* ======================================
+           INSIGHTS
+           ====================================== */
+
+        try {
+
+            const insights =
+                await apiFetch(
+                    `/api/recommendations/top?days=${encodeURIComponent(days)}&limit=4`
+                );
+
+
+            if (
+                Array.isArray(insights) &&
+                insights.length > 0
+            ) {
+
+                renderInsights(insights);
+
+            } else {
+
+                renderInsightsPlaceholder();
+
+            }
+
+        } catch (error) {
+
+            console.warn(
+                'Insights API failed:',
+                error
+            );
+
+            renderInsightsPlaceholder();
+
+        }
+
+
+        /* ======================================
+           USER NAME
+           ====================================== */
+
+        loadDashboardUser();
+
+    } catch (error) {
+
+        console.error(
+            'Dashboard load error:',
+            error
+        );
+
+
+        if (
+            typeof showAlert === 'function'
+        ) {
+
+            showAlert(
+                'Failed to load dashboard: ' +
+                error.message,
+                'error'
+            );
+
+        }
+
+    }
+}
+
+
+/* ==========================================
+   USER
+   ========================================== */
+
+function loadDashboardUser() {
+
+    let user = {};
+
+    try {
+
+        user = JSON.parse(
+            localStorage.getItem('user') || '{}'
+        );
+
+    } catch (error) {
+
+        console.warn(
+            'Invalid user data in localStorage'
+        );
+
+    }
+
+
+    const fullName =
+        user?.full_name ||
+        user?.name ||
+        'Admin';
+
+
+    const firstName =
+        String(fullName)
+            .trim()
+            .split(/\s+/)[0] ||
+        'Admin';
+
+
+    const element =
+        document.getElementById(
+            'userFirstName'
+        );
+
+
+    if (element) {
+
+        element.textContent =
+            firstName;
+
+    }
+}
+
+
+/* ==========================================
+   KPI CARDS
+   ========================================== */
+
+function renderKpis(kpis) {
+
+    const k = kpis || {};
+
+
+    const setText = (
+        id,
+        value
+    ) => {
+
+        const element =
+            document.getElementById(id);
+
+        if (element) {
+
+            element.textContent =
+                value;
+
+        }
+    };
+
+
+    /*
+     * Supports new API format:
+     *
+     * revenue: {
+     *     value: 125000,
+     *     trend: 12.4
+     * }
+     */
+
+
+    const revenue =
+        getKpiValue(
+            k.revenue,
+            k.gross_revenue
+        );
+
+
+    const orders =
+        getKpiValue(
+            k.orders,
+            k.total_orders
+        );
+
+
+    const netProfit =
+        getKpiValue(
+            k.net_profit,
+            k.net_revenue
+        );
+
+
+    const rating =
+        getKpiValue(
+            k.avg_rating,
+            k.rating
+        );
+
+
+    /* ======================================
+       VALUES
+       ====================================== */
+
+    setText(
+        'kpiGross',
+        formatCurrency(
+            Number.isFinite(revenue)
+                ? revenue
+                : 0
+        )
+    );
+
+
+    setText(
+        'kpiOrders',
+        formatNumber(
+            Number.isFinite(orders)
+                ? orders
+                : 0
+        )
+    );
+
+
+    setText(
+        'kpiNet',
+        formatCurrency(
+            Number.isFinite(netProfit)
+                ? netProfit
+                : 0
+        )
+    );
+
+
+    if (
+        Number.isFinite(rating)
+    ) {
+
+        setText(
+            'kpiRating',
+            rating.toFixed(1)
+        );
+
+    } else {
+
+        setText(
+            'kpiRating',
+            '—'
+        );
+
+    }
+
+
+    /* ======================================
+       TRENDS
+       ====================================== */
+
+    setTrend(
+        'kpiGrossTrend',
+        getKpiTrend(
+            k.revenue,
+            k.gross_revenue
+        )
+    );
+
+
+    setTrend(
+        'kpiOrdersTrend',
+        getKpiTrend(
+            k.orders,
+            k.total_orders
+        )
+    );
+
+
+    setTrend(
+        'kpiNetTrend',
+        getKpiTrend(
+            k.net_profit,
+            k.net_revenue
+        )
+    );
+
+
+    setTrend(
+        'kpiRatingTrend',
+        getKpiTrend(
+            k.avg_rating,
+            k.rating
+        ),
+        true
+    );
+}
+
+
+/* ==========================================
+   KPI VALUE HELPER
+   ========================================== */
+
+function getKpiValue(primary, fallback) {
+
+    if (
+        primary &&
+        typeof primary === 'object' &&
+        primary.value !== undefined
+    ) {
+
+        const value =
+            Number(primary.value);
+
+        return Number.isFinite(value)
+            ? value
+            : NaN;
+    }
+
+
+    if (
+        primary !== undefined &&
+        primary !== null
+    ) {
+
+        const value =
+            Number(primary);
+
+        return Number.isFinite(value)
+            ? value
+            : NaN;
+    }
+
+
+    if (
+        fallback !== undefined &&
+        fallback !== null
+    ) {
+
+        const value =
+            Number(fallback);
+
+        return Number.isFinite(value)
+            ? value
+            : NaN;
+    }
+
+
+    return NaN;
+}
+
+
+/* ==========================================
+   KPI TREND HELPER
+   ========================================== */
+
+function getKpiTrend(
+    primary,
+    fallback
+) {
+
+    let value;
+
+
+    if (
+        primary &&
+        typeof primary === 'object' &&
+        primary.trend !== undefined
+    ) {
+
+        value =
+            Number(primary.trend);
+
+    } else if (
+        fallback &&
+        typeof fallback === 'object' &&
+        fallback.trend !== undefined
+    ) {
+
+        value =
+            Number(fallback.trend);
+
+    } else {
+
+        return null;
+
+    }
+
+
+    return Number.isFinite(value)
+        ? value
+        : null;
+}
+
+
+/* ==========================================
+   KPI TREND
+   ========================================== */
+
+function setTrend(
+    id,
+    value,
+    isDecimal = false
+) {
+
+    const element =
+        document.getElementById(id);
+
+    if (!element) return;
+
+
+    const valueElement =
+        element.querySelector(
+            'span:nth-child(2)'
+        );
+
+
+    const arrow =
+        element.querySelector(
+            '.kpi-trend-arrow'
+        );
+
+
+    /*
+     * No real comparison data
+     */
+
+    if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(Number(value))
+    ) {
+
+        if (valueElement) {
+
+            valueElement.textContent =
+                '—';
+
+        }
+
+        element.classList.remove(
+            'up',
+            'down'
+        );
+
+
+        if (arrow) {
+
+            arrow.textContent =
+                '—';
+
+        }
+
+        return;
+    }
+
+
+    const numericValue =
+        Number(value);
+
+
+    if (valueElement) {
+
+        valueElement.textContent =
+            isDecimal
+                ? numericValue.toFixed(1)
+                : `${numericValue.toFixed(1)}%`;
+
+    }
+
+
+    element.classList.toggle(
+        'up',
+        numericValue >= 0
+    );
+
+
+    element.classList.toggle(
+        'down',
+        numericValue < 0
+    );
+
+
+    if (arrow) {
+
+        arrow.textContent =
+            numericValue >= 0
+                ? '↑'
+                : '↓';
+
+    }
+}
+
+
+/* ==========================================
+   REVENUE / PROFIT TREND CHART
+   ========================================== */
+
+function renderTrendChart() {
+
+    const canvas =
+        document.getElementById(
+            'trendChart'
+        );
+
+
+    if (!canvas) return;
+
+
+    /*
+     * No data
+     */
+
+    let data =
+        getTrendData(
+            cachedTrends
+        );
+
+
+    if (
+        !Array.isArray(data) ||
+        data.length === 0
+    ) {
+
+        if (trendChart) {
+
+            trendChart.destroy();
+            trendChart = null;
+
+        }
+
+        return;
+    }
+
+
+    const labels =
+        data.map(item => {
+
+            return shortDate(
+                item?.date ??
+                item?.week_start ??
+                item?.month_start
+            );
+
+        });
+
+
+    const revenue =
+        data.map(item => {
+
+            const value =
+                Number(
+                    item?.revenue ??
+                    item?.gross_revenue ??
+                    0
+                );
+
+            return Number.isFinite(value)
+                ? value
+                : 0;
+
+        });
+
+
+    const profit =
+        data.map(item => {
+
+            const value =
+                Number(
+                    item?.profit ??
+                    item?.net_profit ??
+                    0
+                );
+
+            return Number.isFinite(value)
+                ? value
+                : 0;
+
+        });
+
+
+    if (trendChart) {
+
+        trendChart.destroy();
+        trendChart = null;
+
+    }
+
+
+    if (
+        typeof Chart === 'undefined'
+    ) {
+
+        console.error(
+            'Chart.js is not loaded.'
+        );
+
+        return;
+    }
+
+
+    trendChart =
+        new Chart(
+            canvas.getContext('2d'),
+            {
+
+                type: 'line',
+
+                data: {
+
+                    labels,
+
+                    datasets: [
+
+                        {
+                            label: 'Revenue',
+
+                            data: revenue,
+
+                            borderColor:
+                                COLORS.primary,
+
+                            backgroundColor:
+                                'rgba(37, 99, 235, 0.06)',
+
+                            borderWidth: 2.5,
+
+                            tension: 0.4,
+
+                            fill: true,
+
+                            pointRadius: 0,
+
+                            pointHoverRadius: 5,
+
+                            pointHoverBackgroundColor:
+                                COLORS.primary,
+
+                            pointHoverBorderColor:
+                                '#fff',
+
+                            pointHoverBorderWidth: 2
+                        },
+
+
+                        {
+                            label: 'Profit',
+
+                            data: profit,
+
+                            borderColor:
+                                COLORS.profit,
+
+                            backgroundColor:
+                                'rgba(16, 185, 129, 0.04)',
+
+                            borderWidth: 2.5,
+
+                            tension: 0.4,
+
+                            fill: true,
+
+                            pointRadius: 0,
+
+                            pointHoverRadius: 5,
+
+                            pointHoverBackgroundColor:
+                                COLORS.profit,
+
+                            pointHoverBorderColor:
+                                '#fff',
+
+                            pointHoverBorderWidth: 2
+                        }
+
+                    ]
+                },
+
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+
+
+                    plugins: {
+
+                        legend: {
+
+                            position: 'bottom',
+
+                            labels: {
+
+                                boxWidth: 8,
+
+                                boxHeight: 8,
+
+                                padding: 16,
+
+                                font: {
+                                    size: 11,
+                                    family: 'Inter'
+                                },
+
+                                usePointStyle: true,
+
+                                pointStyle: 'circle'
+                            }
+                        },
+
+
+                        tooltip: {
+
+                            backgroundColor:
+                                '#0a1929',
+
+                            padding: 10,
+
+                            cornerRadius: 8,
+
+                            displayColors: true,
+
+                            callbacks: {
+
+                                label: context => {
+
+                                    return (
+                                        `${context.dataset.label}: ` +
+                                        `${formatCurrency(
+                                            context.parsed.y
+                                        )}`
+                                    );
+
+                                }
+                            }
+                        }
+                    },
+
+
+                    scales: {
+
+                        y: {
+
+                            beginAtZero: true,
+
+                            ticks: {
+
+                                callback: value => {
+
+                                    return formatAxisCurrency(
+                                        value
+                                    );
+
+                                },
+
+                                font: {
+                                    size: 10,
+                                    family: 'Inter'
+                                },
+
+                                color: '#9ca3af'
+                            },
+
+
+                            grid: {
+                                color: '#f3f4f6',
+                                drawBorder: false
+                            }
+                        },
+
+
+                        x: {
+
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+
+                            ticks: {
+
+                                font: {
+                                    size: 10,
+                                    family: 'Inter'
+                                },
+
+                                color: '#9ca3af',
+
+                                maxRotation: 0
+                            }
+                        }
+                    }
+                }
+            }
+        );
+}
+
+
+/* ==========================================
+   TREND DATA NORMALIZER
+   ========================================== */
+
+function getTrendData(trends) {
+
+    if (
+        Array.isArray(trends)
+    ) {
+
+        return trends;
+
+    }
+
+
+    if (
+        !trends ||
+        typeof trends !== 'object'
+    ) {
+
+        return [];
+
+    }
+
+
+    /*
+     * Supports:
+     *
+     * {
+     *   daily: [],
+     *   weekly: [],
+     *   monthly: []
+     * }
+     */
+
+    if (
+        Array.isArray(
+            trends[currentTrendView]
+        )
+    ) {
+
+        return trends[currentTrendView];
+
+    }
+
+
+    /*
+     * Supports:
+     *
+     * {
+     *   data: []
+     * }
+     */
+
+    if (
+        Array.isArray(
+            trends.data
+        )
+    ) {
+
+        return trends.data;
+
+    }
+
+
+    return [];
+}
+
+
+/* ==========================================
+   CURRENCY AXIS FORMAT
+   ========================================== */
+
+function formatAxisCurrency(value) {
+
+    const number =
+        Number(value);
+
+
+    if (!Number.isFinite(number)) {
+        return '₹0';
+    }
+
+
+    if (Math.abs(number) >= 100000) {
+
+        return (
+            '₹' +
+            (
+                number / 100000
+            ).toFixed(1) +
+            'L'
+        );
+
+    }
+
+
+    if (Math.abs(number) >= 1000) {
+
+        return (
+            '₹' +
+            (
+                number / 1000
+            ).toFixed(0) +
+            'k'
+        );
+
+    }
+
+
+    return '₹' + number;
+}
+
+
+/* ==========================================
+   PEAK HOURS
+   ========================================== */
+
+function renderPeakHours(hours) {
+
+    const canvas =
+        document.getElementById(
+            'peakHoursChart'
+        );
+
+
+    if (!canvas) return;
+
+
+    if (
+        !Array.isArray(hours) ||
+        hours.length === 0
+    ) {
+
+        if (peakHoursChart) {
+
+            peakHoursChart.destroy();
+            peakHoursChart = null;
+
+        }
+
+        return;
+    }
+
+
+    const labels =
+        hours.map(item => {
+
+            const hour =
+                Number(item?.hour);
+
+
+            if (!Number.isFinite(hour)) {
+                return '—';
+            }
+
+
+            if (hour === 0) return '12am';
+
+            if (hour === 12) return '12pm';
+
+            return hour > 12
+                ? `${hour - 12}pm`
+                : `${hour}am`;
+
+        });
+
+
+    const data =
+        hours.map(item => {
+
+            const orders =
+                Number(
+                    item?.orders ??
+                    item?.order_count ??
+                    0
+                );
+
+            return Number.isFinite(orders)
+                ? orders
+                : 0;
+
+        });
+
+
+    const maxValue =
+        Math.max(
+            ...data,
+            0
+        );
+
+
+    if (peakHoursChart) {
+
+        peakHoursChart.destroy();
+        peakHoursChart = null;
+
+    }
+
+
+    if (
+        typeof Chart === 'undefined'
+    ) return;
+
+
+    peakHoursChart =
+        new Chart(
+            canvas.getContext('2d'),
+            {
+
+                type: 'bar',
+
+                data: {
+
+                    labels,
+
+                    datasets: [
+
+                        {
+                            data,
+
+                            backgroundColor:
+                                data.map(
+                                    value =>
+                                        value === maxValue
+                                            ? COLORS.primary
+                                            : '#dbeafe'
+                                ),
+
+                            borderRadius: 4,
+
+                            barThickness: 12
+                        }
+
+                    ]
+                },
+
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    plugins: {
+
+                        legend: {
+                            display: false
+                        }
+                    },
+
+
+                    scales: {
+
+                        y: {
+
+                            beginAtZero: true,
+
+                            ticks: {
+
+                                precision: 0,
+
+                                font: {
+                                    size: 9
+                                },
+
+                                color: '#9ca3af'
+                            },
+
+                            grid: {
+                                color: '#f3f4f6',
+                                drawBorder: false
+                            }
+                        },
+
+
+                        x: {
+
+                            grid: {
+                                display: false
+                            },
+
+                            ticks: {
+
+                                font: {
+                                    size: 9
+                                },
+
+                                color: '#9ca3af',
+
+                                maxRotation: 0
+                            }
+                        }
+                    }
+                }
+            }
+        );
+}
+
+
+/* ==========================================
+   CUSTOMER OVERVIEW
+   ========================================== */
+
+function renderCustomerChart(customerData) {
+
+    const canvas =
+        document.getElementById(
+            'customerChart'
+        );
+
+
+    if (!canvas) return;
+
+
+    /*
+     * IMPORTANT:
+     * No hardcoded 31.7% assumption.
+     *
+     * Backend should provide:
+     *
+     * {
+     *   total: 100,
+     *   new_customers: 70,
+     *   returning_customers: 30
+     * }
+     */
+
+
+    const total =
+        Number(
+            customerData?.total ??
+            customerData?.unique_customers ??
+            0
+        );
+
+
+    const newCustomers =
+        Number(
+            customerData?.new_customers ??
+            0
+        );
+
+
+    const returning =
+        Number(
+            customerData?.returning_customers ??
+            0
+        );
+
+
+    const safeTotal =
+        Number.isFinite(total)
+            ? total
+            : 0;
+
+
+    const safeNew =
+        Number.isFinite(newCustomers)
+            ? newCustomers
+            : 0;
+
+
+    const safeReturning =
+        Number.isFinite(returning)
+            ? returning
+            : 0;
+
+
+    if (customerChart) {
+
+        customerChart.destroy();
+        customerChart = null;
+
+    }
+
+
+    if (
+        safeTotal <= 0
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        typeof Chart === 'undefined'
+    ) return;
+
+
+    customerChart =
+        new Chart(
+            canvas.getContext('2d'),
+            {
+
+                type: 'doughnut',
+
+                data: {
+
+                    labels: [
+                        'New',
+                        'Returning'
+                    ],
+
+                    datasets: [
+
+                        {
+                            data: [
+                                safeNew,
+                                safeReturning
+                            ],
+
+                            backgroundColor: [
+                                COLORS.primary,
+                                COLORS.profit
+                            ],
+
+                            borderWidth: 0,
+
+                            cutout: '72%'
+                        }
+
+                    ]
+                },
+
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    plugins: {
+
+                        legend: {
+
+                            position: 'right',
+
+                            labels: {
+
+                                boxWidth: 8,
+
+                                boxHeight: 8,
+
+                                padding: 12,
+
+                                font: {
+                                    size: 11,
+                                    family: 'Inter'
+                                },
+
+                                usePointStyle: true,
+
+                                pointStyle: 'circle'
+                            }
+                        },
+
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                label: context => {
+
+                                    const percentage =
+                                        safeTotal > 0
+                                            ? (
+                                                context.parsed /
+                                                safeTotal *
+                                                100
+                                            ).toFixed(1)
+                                            : '0.0';
+
+
+                                    return (
+                                        `${context.label}: ` +
+                                        `${context.parsed} ` +
+                                        `(${percentage}%)`
+                                    );
+
+                                }
+                            }
+                        }
+                    }
+                },
+
+
+                plugins: [
+
+                    {
+                        id: 'centerText',
+
+                        afterDraw(chart) {
+
+                            const {
+                                ctx,
+                                chartArea
+                            } = chart;
+
+
+                            const x =
+                                (
+                                    chartArea.left +
+                                    chartArea.right
+                                ) / 2;
+
+
+                            const y =
+                                (
+                                    chartArea.top +
+                                    chartArea.bottom
+                                ) / 2;
+
+
+                            ctx.save();
+
+                            ctx.textAlign =
+                                'center';
+
+
+                            ctx.font =
+                                'bold 22px Inter';
+
+                            ctx.fillStyle =
+                                '#111827';
+
+
+                            ctx.fillText(
+                                safeTotal.toLocaleString(
+                                    'en-IN'
+                                ),
+                                x,
+                                y + 2
+                            );
+
+
+                            ctx.font =
+                                '11px Inter';
+
+                            ctx.fillStyle =
+                                '#6b7280';
+
+
+                            ctx.fillText(
+                                'Total Customers',
+                                x,
+                                y + 20
+                            );
+
+
+                            ctx.restore();
+                        }
+                    }
+
+                ]
+            }
+        );
+}
+
+
+/* ==========================================
+   TOP DISHES
+   ========================================== */
+
+function renderTopDishes(dishes) {
+
+    const element =
+        document.getElementById(
+            'topDishesList'
+        );
+
+
+    if (!element) return;
+
+
+    if (
+        !Array.isArray(dishes) ||
+        dishes.length === 0
+    ) {
+
+        element.innerHTML = `
+            <p class="text-muted text-sm">
+                No data yet.
+            </p>
+        `;
+
+        return;
+    }
+
+
+    const emojis = [
+        '🍛',
+        '🍗',
+        '🥘',
+        '🍲'
+    ];
+
+
+    element.innerHTML =
+        dishes
+            .slice(0, 5)
+            .map((dish, index) => {
+
+                const name =
+                    dish?.name ??
+                    'Unknown Dish';
+
+
+                const orders =
+                    Number(
+                        dish?.orders ??
+                        0
+                    );
+
+
+                const revenue =
+                    Number(
+                        dish?.revenue ??
+                        0
+                    );
+
+
+                const trend =
+                    Number(
+                        dish?.trend_pct
+                    );
+
+
+                const safeOrders =
+                    Number.isFinite(orders)
+                        ? orders
+                        : 0;
+
+
+                const safeRevenue =
+                    Number.isFinite(revenue)
+                        ? revenue
+                        : 0;
+
+
+                let trendText = '—';
+
+                let trendClass =
+                    'neutral';
+
+
+                if (
+                    Number.isFinite(trend)
+                ) {
+
+                    trendText =
+                        `${trend >= 0 ? '↑' : '↓'} ` +
+                        `${Math.abs(trend).toFixed(1)}%`;
+
+
+                    trendClass =
+                        trend >= 0
+                            ? 'positive'
+                            : 'negative';
+                }
+
+
+                return `
+                    <a
+                        href="items.html?search=${encodeURIComponent(
+                            String(name)
+                        )}"
+                        class="dish-item"
+                    >
+
+                        <div class="dish-rank">
+                            ${index + 1}
+                        </div>
+
+
+                        <div class="dish-thumb">
+                            ${emojis[
+                                index %
+                                emojis.length
+                            ]}
+                        </div>
+
+
+                        <div class="dish-info">
+
+                            <div class="dish-name">
+                                ${escapeHtml(
+                                    String(name)
+                                )}
+                            </div>
+
+
+                            <div class="dish-meta">
+                                ${formatNumber(
+                                    safeOrders
+                                )} orders
+                            </div>
+
+                        </div>
+
+
+                        <div class="dish-stats">
+
+                            <div class="dish-revenue">
+                                ${formatCurrency(
+                                    safeRevenue
+                                )}
+                            </div>
+
+
+                            <div class="dish-trend ${trendClass}">
+                                ${trendText}
+                            </div>
+
+                        </div>
+
+                    </a>
+                `;
+
+            })
+            .join('');
+}
+
+
+/* ==========================================
+   PROFIT MARGINS
+   ========================================== */
+
+function renderProfitMargins(items) {
+
+    const element =
+        document.getElementById(
+            'profitMarginList'
+        );
+
+
+    if (!element) return;
+
+
+    if (
+        !Array.isArray(items) ||
+        items.length === 0
+    ) {
+
+        element.innerHTML = `
+            <p class="text-muted text-sm">
+                No data yet.
+            </p>
+        `;
+
+        return;
+    }
+
+
+    const colors = [
+        'green',
+        'blue',
+        'purple',
+        'amber'
+    ];
+
+
+    element.innerHTML =
+        items
+            .slice(0, 4)
+            .map((item, index) => {
+
+                const name =
+                    item?.name ??
+                    'Unknown Item';
+
+
+                const rawMargin =
+                    Number(
+                        item?.margin_pct ??
+                        item?.profit_margin ??
+                        0
+                    );
+
+
+                const margin =
+                    Number.isFinite(rawMargin)
+                        ? rawMargin
+                        : 0;
+
+
+                const percentage =
+                    Math.max(
+                        0,
+                        Math.min(
+                            100,
+                            margin
+                        )
+                    );
+
+
+                return `
+                    <div class="progress-item">
+
+                        <div class="progress-header">
+
+                            <span class="progress-name">
+                                ${escapeHtml(
+                                    String(name)
+                                )}
+                            </span>
+
+
+                            <span class="progress-value">
+                                ${margin.toFixed(1)}%
+                            </span>
+
+                        </div>
+
+
+                        <div class="progress-bar">
+
+                            <div
+                                class="progress-fill ${
+                                    colors[
+                                        index %
+                                        colors.length
+                                    ]
+                                }"
+                                style="width:${percentage}%"
+                            ></div>
+
+                        </div>
+
+                    </div>
+                `;
+
+            })
+            .join('');
+}
+
+
+/* ==========================================
+   INSIGHTS
+   ========================================== */
+
+function renderInsights(insights) {
+
+    const element =
+        document.getElementById(
+            'insightsList'
+        );
+
+
+    if (!element) return;
+
+
+    if (
+        !Array.isArray(insights) ||
+        insights.length === 0
+    ) {
+
+        renderInsightsPlaceholder();
+
+        return;
+    }
+
+
+    const typeMap = {
+
+        success: 'promote',
+
+        info: 'opportunity',
+
+        warning: 'optimize',
+
+        danger: 'review'
+
+    };
+
+
+    const labelMap = {
+
+        promote:
+            '🚀 PROMOTE',
+
+        opportunity:
+            '📈 GROWTH OPPORTUNITY',
+
+        optimize:
+            '⚙️ OPTIMIZE',
+
+        review:
+            '⚠️ REVIEW'
+
+    };
+
+
+    element.innerHTML =
+        insights
+            .slice(0, 4)
+            .map(insight => {
+
+                const className =
+                    typeMap[
+                        insight?.type
+                    ] ||
+                    'opportunity';
+
+
+                const title =
+                    insight?.title ??
+                    'Business Insight';
+
+
+                const description =
+                    insight?.description ??
+                    'No additional details available.';
+
+
+                return `
+                    <div
+                        class="insight-card ${className}"
+                    >
+
+                        <span class="insight-badge">
+                            ${labelMap[className]}
+                        </span>
+
+
+                        <div class="insight-body">
+
+                            <div class="insight-content">
+
+                                <div class="insight-title">
+                                    ${escapeHtml(
+                                        String(title)
+                                    )}
+                                </div>
+
+
+                                <div class="insight-desc">
+                                    ${escapeHtml(
+                                        String(description)
+                                    )}
+                                </div>
+
+                            </div>
+
+
+                            <div class="insight-thumb">
+                                🍛
+                            </div>
+
+                        </div>
+
+
+                        <a
+                            href="recommendations.html"
+                            class="insight-cta"
+                        >
+                            View Details →
+                        </a>
+
+                    </div>
+                `;
+
+            })
+            .join('');
+}
+
+
+/* ==========================================
+   INSIGHTS PLACEHOLDER
+   ========================================== */
+
+function renderInsightsPlaceholder() {
+
+    const element =
+        document.getElementById(
+            'insightsList'
+        );
+
+
+    if (!element) return;
+
+
+    element.innerHTML = `
+
+        <div class="insight-card promote">
+
+            <span class="insight-badge">
+                🚀 PROMOTE
+            </span>
+
+
+            <div class="insight-body">
+
+                <div class="insight-content">
+
+                    <div class="insight-title">
+                        Upload data to see insights
+                    </div>
+
+
+                    <div class="insight-desc">
+                        Start by uploading your sales
+                        data to get AI-powered
+                        recommendations.
+                    </div>
+
+                </div>
+
+
+                <div class="insight-thumb">
+                    📤
+                </div>
+
+            </div>
+
+
+            <a
+                href="upload.html"
+                class="insight-cta"
+            >
+                Upload Data →
+            </a>
+
+        </div>
+
+    `;
+}
+
+
+/* ==========================================
+   RECENT ORDERS
+   ========================================== */
+
+function renderRecentOrders(orders) {
+
+    const tbody =
+        document.getElementById(
+            'recentOrdersBody'
+        );
+
+
+    if (!tbody) return;
+
+
+    if (
+        !Array.isArray(orders) ||
+        orders.length === 0
+    ) {
+
+        tbody.innerHTML = `
+            <tr>
+
+                <td
+                    colspan="6"
+                    style="
+                        text-align:center;
+                        color:var(--gray-500);
+                        padding:2rem;
+                    "
+                >
+                    No orders yet. Upload data to see them.
+                </td>
+
+            </tr>
+        `;
+
+        return;
+    }
+
+
+    tbody.innerHTML =
+        orders
+            .slice(0, 5)
+            .map(order => {
+
+                const orderId =
+                    order?.id ??
+                    order?.order_id ??
+                    '#—';
+
+
+                const customer =
+                    order?.customer ??
+                    order?.customer_name ??
+                    'Guest';
+
+
+                const dish =
+                    order?.dish ??
+                    order?.item_name ??
+                    '—';
+
+
+                const rawAmount =
+                    Number(
+                        order?.amount ??
+                        order?.total_amount ??
+                        0
+                    );
+
+
+                const amount =
+                    Number.isFinite(rawAmount)
+                        ? rawAmount
+                        : 0;
+
+
+                const rawStatus =
+                    String(
+                        order?.status ??
+                        'pending'
+                    ).trim();
+
+
+                const status =
+                    rawStatus.toLowerCase() ||
+                    'pending';
+
+
+                const time =
+                    order?.time ??
+                    order?.order_time ??
+                    '—';
+
+
+                return `
+                    <tr>
+
+                        <td>
+                            <span class="order-id">
+                                ${escapeHtml(
+                                    String(orderId)
+                                )}
+                            </span>
+                        </td>
+
+
+                        <td>
+                            ${escapeHtml(
+                                String(customer)
+                            )}
+                        </td>
+
+
+                        <td>
+                            ${escapeHtml(
+                                String(dish)
+                            )}
+                        </td>
+
+
+                        <td class="order-amount">
+                            ${formatCurrency(
+                                amount
+                            )}
+                        </td>
+
+
+                        <td>
+
+                            <span
+                                class="status-badge ${escapeHtml(
+                                    status
+                                )}"
+                            >
+                                ${escapeHtml(
+                                    rawStatus ||
+                                    'pending'
+                                )}
+                            </span>
+
+                        </td>
+
+
+                        <td class="order-time">
+                            ${escapeHtml(
+                                String(time)
+                            )}
+                        </td>
+
+                    </tr>
+                `;
+
+            })
+            .join('');
+}
+
+
+/* ==========================================
+   DATE HELPER
+   ========================================== */
+
+function shortDate(value) {
+
+    if (!value) return '';
+
+
+    const date =
+        new Date(value);
+
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        return String(value);
+
+    }
+
+
+    return date.toLocaleDateString(
+        'en-IN',
+        {
+            day: 'numeric',
+            month: 'short'
+        }
+    );
+}
+
+
+/* ==========================================
+   CHART TOGGLE
+   ========================================== */
+
+document.addEventListener(
+    'click',
+    event => {
+
+        const button =
+            event.target.closest(
+                '.toggle-btn'
+            );
+
+
+        if (!button) return;
+
+
+        const parent =
+            button.closest(
+                '.chart-toggle'
+            );
+
+
+        if (!parent) return;
+
+
+        parent
+            .querySelectorAll(
+                '.toggle-btn'
+            )
+            .forEach(item => {
+
+                item.classList.remove(
+                    'active'
+                );
+
+            });
+
+
+        button.classList.add(
+            'active'
+        );
+
+
+        currentTrendView =
+            button.dataset.view ||
+            'daily';
+
+
+        renderTrendChart();
+
+    }
+);
+
+
+/* ==========================================
+   FILTER CHANGE
+   ========================================== */
+
+document.addEventListener(
+    'change',
+    event => {
+
+        if (
+            event.target.id ===
+            'daysFilter'
+        ) {
+
+            loadDashboard();
+
+        }
+
+    }
+);
+
+
+/* ==========================================
+   AUTO INIT
+   ========================================== */
+
+window.addEventListener(
+    'DOMContentLoaded',
+    () => {
+
+        loadDashboard();
+
+    }
+);
+
+
+
+### FILE: frontend/js/api.js
+-------------------------------------------
+// ==========================================
+// API CONFIGURATION
+// ==========================================
+
+const API_URL = 'http://127.0.0.1:5000';
+
+
+// ==========================================
+// API FETCH WRAPPER
+// ==========================================
+
+async function apiFetch(path, options = {}) {
+
+    const token = localStorage.getItem('token');
+
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? {
+            'Authorization': `Bearer ${token}`
+        } : {}),
+        ...(options.headers || {})
+    };
+
+    // FormData should not have Content-Type manually set
+    if (options.body instanceof FormData) {
+        delete headers['Content-Type'];
+    }
+
+    try {
+
+        console.log('API Request:', {
+            url: `${API_URL}${path}`,
+            method: options.method || 'GET'
+        });
+
+        const response = await fetch(`${API_URL}${path}`, {
+            ...options,
+            headers
+        });
+
+        // ------------------------------------------
+        // Read response safely
+        // ------------------------------------------
+
+        const contentType = response.headers.get('content-type') || '';
+
+        let data;
+
+        if (contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const text = await response.text();
+
+            data = {
+                message: text
+            };
+        }
+
+        console.log('API Response:', response.status, data);
+
+
+        // ------------------------------------------
+        // Unauthorized
+        // ------------------------------------------
+
+        if (response.status === 401) {
+
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('kitchen');
+            localStorage.removeItem('active_kitchen_id');
+
+            const currentPage =
+                window.location.pathname.toLowerCase();
+
+            if (
+                !currentPage.includes('login') &&
+                !currentPage.includes('signup')
+            ) {
+                window.location.href = 'login.html';
+            }
+
+            throw new Error(
+                data.error ||
+                data.message ||
+                'Session expired. Please login again.'
+            );
+        }
+
+
+        // ------------------------------------------
+        // Other API errors
+        // ------------------------------------------
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.error ||
+                data.message ||
+                `Request failed with status ${response.status}`
+            );
+        }
+
+
+        // ------------------------------------------
+        // Success
+        // ------------------------------------------
+
+        return data;
+
+    } catch (error) {
+
+        console.error('API Error:', error);
+
+        // Network error
+        if (error instanceof TypeError) {
+            throw new Error(
+                'Cannot connect to the backend. Make sure Flask is running on port 5000.'
+            );
+        }
+
+        throw error;
+    }
+}
+
+
+### FILE: frontend/js/config.js
+-------------------------------------------
+// Production API URL
+const API_URL = window.location.hostname === 'localhost' ||
+                window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5000'
+    : 'https://cloudkitchen-api.onrender.com';   // ← Your Render URL
+
+const APP_NAME = 'Kitchen Analytics';
+const APP_VERSION = '2.0.0';
+
+// Razorpay
+const RAZORPAY_KEY_ID = 'rzp_test_xxxxxxxxxxxxx';  // Add later
+
+
+
+
+=== AUDIT COMPLETE ===
+File size: 198738 bytes

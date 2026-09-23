@@ -1,107 +1,42 @@
-# ============================================
-# Docker Compose — Local Development Stack
-# ============================================
-# Usage:
-#   docker-compose up -d          # Start all services
-#   docker-compose logs -f        # View logs
-#   docker-compose down           # Stop all
-#   docker-compose down -v        # Stop + delete volumes
-# ============================================
-
-version: '3.9'
+version: "3.9"
 
 services:
-  # ─── PostgreSQL Database ───
   postgres:
     image: postgres:15-alpine
-    container_name: cloudkitchen-db
+    container_name: kitcheniq-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: cloudkitchen
-      POSTGRES_USER: kitchen_user
-      POSTGRES_PASSWORD: kitchen_pass_123
-      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: kitcheniq
+      POSTGRES_PASSWORD: kitcheniq_dev_pw
+      POSTGRES_DB: kitcheniq
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./backend/db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - kitcheniq_pgdata:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kitchen_user -d cloudkitchen"]
+      test: ["CMD-SHELL", "pg_isready -U kitcheniq -d kitcheniq"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - cloudkitchen
 
-  # ─── Python Backend (Flask) ───
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: cloudkitchen-api
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: kitcheniq-backend
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://kitchen_user:kitchen_pass_123@postgres:5432/cloudkitchen
-      SECRET_KEY: dev-secret-key-change-in-production-xyz123
-      FLASK_ENV: development
+      DATABASE_URL: postgresql://kitcheniq:kitcheniq_dev_pw@postgres:5432/kitcheniq
+      SECRET_KEY: change-me-in-production
+      FLASK_ENV: production
+      CORS_ORIGINS: http://localhost:5500,http://127.0.0.1:5500
       PORT: 5000
-      PYTHONUNBUFFERED: 1
     ports:
       - "5000:5000"
-    volumes:
-      - ./backend:/app
-      - ./backend/uploads:/app/uploads
-    command: >
-      sh -c "python -c 'import time; time.sleep(2)' &&
-             gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --timeout 120 --reload"
-    networks:
-      - cloudkitchen
-
-  # ─── Frontend (Static Server) ───
-  frontend:
-    image: python:3.11-alpine
-    container_name: cloudkitchen-web
-    restart: unless-stopped
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-    ports:
-      - "5500:5500"
-    command: python -m http.server 5500
-    networks:
-      - cloudkitchen
-
-  # ─── pgAdmin (Optional DB GUI) ───
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: cloudkitchen-pgadmin
-    restart: unless-stopped
-    depends_on:
-      - postgres
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@kitchenanalytics.local
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    networks:
-      - cloudkitchen
-    profiles:
-      - tools
 
 volumes:
-  postgres_data:
-    driver: local
-  pgadmin_data:
-    driver: local
-
-networks:
-  cloudkitchen:
-    driver: bridge
+  kitcheniq_pgdata:

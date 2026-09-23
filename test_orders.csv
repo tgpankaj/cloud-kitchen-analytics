@@ -1,0 +1,11 @@
+order_date,order_time,platform,customer_phone,item_name,quantity,unit_price,commission_pct,prep_time,delivery_time,status
+2026-09-20,19:30,Swiggy,9876543210,Paneer Tikka,2,300,25,15,35,delivered
+2026-09-20,20:15,Zomato,9876543211,Chicken Biryani,1,350,28,20,40,delivered
+2026-09-20,21:00,Swiggy,9876543212,Dal Makhani,1,250,25,12,30,delivered
+2026-09-21,19:45,Zomato,9876543213,Chicken Biryani,2,350,28,18,38,delivered
+2026-09-21,20:30,Swiggy,9876543214,Paneer Tikka,1,300,25,14,32,delivered
+2026-09-21,21:15,Zomato,9876543215,Butter Naan,3,80,28,10,25,delivered
+2026-09-22,19:20,Swiggy,9876543216,Chicken Biryani,1,350,25,20,42,delivered
+2026-09-22,20:10,Zomato,9876543217,Dal Makhani,2,250,28,15,35,delivered
+2026-09-22,21:30,Swiggy,9876543218,Paneer Tikka,2,300,25,16,34,delivered
+2026-09-23,19:00,Zomato,9876543219,Chicken Biryani,1,350,28,19,39,delivered
