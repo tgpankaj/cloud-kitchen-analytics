@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Dishes — KitchenIQ</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+
+    <!-- Core CSS -->
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/shell.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/pages.css">
+    <link rel="stylesheet" href="css/items.css">
+    <link rel="stylesheet" href="css/charts.css">
+    <link rel="stylesheet" href="css/responsive.css">
+    <script src="js/mobile-nav.js"></script>
+</head>
+
+<body>
+
+    <!-- =========================================================
+         PAGE CONTENT
+         ========================================================= -->
+    <div id="pageContent">
+
+
+        <!-- =====================================================
+             PAGE HEADER
+             ===================================================== -->
+        <header class="page-header">
+
+            <div class="page-header-left">
+
+                <h1>🍔 Dishes</h1>
+
+                <p>
+                    Track performance, profitability and popularity
+                    of your menu items
+                </p>
+
+            </div>
+
+
+            <div class="page-actions">
+
+                <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    onclick="exportDishes()">
+
+                    📥 Export
+
+                </button>
+
+
+                <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    onclick="refreshDishes()">
+
+                    🔄 Refresh
+
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <!-- =====================================================
+             ALERT
+             ===================================================== -->
+        <div
+            id="alertBox"
+            class="alert"
+            style="display:none"
+            role="alert">
+        </div>
+
+
+        <!-- =====================================================
+             SUMMARY CARDS
+             ===================================================== -->
+        <section
+            class="kpi-grid"
+            aria-label="Dish performance summary">
+
+
+            <!-- Total Dishes -->
+            <article class="kpi-card">
+
+                <div class="kpi-icon">
+                    🍽️
+                </div>
+
+                <div class="kpi-content">
+
+                    <span class="kpi-label">
+                        Total Dishes
+                    </span>
+
+                    <span
+                        class="kpi-value"
+                        id="kpiTotalDishes">
+                        —
+                    </span>
+
+                    <span class="kpi-sub">
+                        Menu items
+                    </span>
+
+                </div>
+
+            </article>
+
+
+            <!-- Total Revenue -->
+            <article class="kpi-card">
+
+                <div class="kpi-icon success-icon-bg">
+                    💰
+                </div>
+
+                <div class="kpi-content">
+
+                    <span class="kpi-label">
+                        Dish Revenue
+                    </span>
+
+                    <span
+                        class="kpi-value positive"
+                        id="kpiDishRevenue">
+                        ₹—
+                    </span>
+
+                    <span class="kpi-sub">
+                        Selected period
+                    </span>
+
+                </div>
+
+            </article>
+
+
+            <!-- Total Profit -->
+            <article class="kpi-card">
+
+                <div class="kpi-icon">
+                    📈
+                </div>
+
+                <div class="kpi-content">
+
+                    <span class="kpi-label">
+                        Net Profit
+                    </span>
+
+                    <span
+                        class="kpi-value"
+                        id="kpiDishProfit">
+                        ₹—
+                    </span>
+
+                    <span class="kpi-sub">
+                        After costs
+                    </span>
+
+                </div>
+
+            </article>
+
+
+            <!-- Average Margin -->
+            <article class="kpi-card">
+
+                <div class="kpi-icon">
+                    🎯
+                </div>
+
+                <div class="kpi-content">
+
+                    <span class="kpi-label">
+                        Avg Margin
+                    </span>
+
+                    <span
+                        class="kpi-value"
+                        id="kpiAvgMargin">
+                        —%
+                    </span>
+
+                    <span class="kpi-sub">
+                        Across dishes
+                    </span>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =====================================================
+             FILTER BAR
+             ===================================================== -->
+        <section class="filter-bar">
+
+            <!-- Search -->
+            <div class="search-input-wrap">
+
+                <span class="search-icon">
+                    🔍
+                </span>
+
+                <input
+                    type="text"
+                    class="input"
+                    id="dishSearch"
+                    placeholder="Search dishes..."
+                    autocomplete="off"
+                    oninput="applyFilters()">
+
+            </div>
+
+
+            <!-- Category -->
+            <select
+                class="select"
+                id="categoryFilter"
+                onchange="applyFilters()">
+
+                <option value="">
+                    All Categories
+                </option>
+
+            </select>
+
+
+            <!-- Status -->
+            <select
+                class="select"
+                id="statusFilter"
+                onchange="applyFilters()">
+
+                <option value="">
+                    All Status
+                </option>
+
+                <option value="star">
+                    ⭐ Star
+                </option>
+
+                <option value="plowhorse">
+                    🐴 Plowhorse
+                </option>
+
+                <option value="puzzle">
+                    🧩 Puzzle
+                </option>
+
+                <option value="dog">
+                    🐕 Dog
+                </option>
+
+            </select>
+
+
+            <!-- Date Range -->
+            <select
+                class="select"
+                id="daysFilterItems"
+                onchange="loadDishes()">
+
+                <option value="7">
+                    Last 7 Days
+                </option>
+
+                <option value="30" selected>
+                    Last 30 Days
+                </option>
+
+                <option value="90">
+                    Last 90 Days
+                </option>
+
+                <option value="180">
+                    Last 6 Months
+                </option>
+
+                <option value="all">
+                    All Time
+                </option>
+
+            </select>
+
+        </section>
+
+
+        <!-- =====================================================
+             BEST / WORST PERFORMERS
+             ===================================================== -->
+        <section class="best-worst-grid">
+
+
+            <!-- Top Performers -->
+            <article class="card best-card">
+
+                <div class="bw-header">
+
+                    <div>
+
+                        <h3>
+                            🏆 Top 5 Performers
+                        </h3>
+
+                        <span class="bw-sub">
+                            Highest net profit
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="bestList"
+                    class="bw-list">
+
+                    <p class="muted small">
+                        Loading...
+                    </p>
+
+                </div>
+
+            </article>
+
+
+            <!-- Bottom Performers -->
+            <article class="card worst-card">
+
+                <div class="bw-header">
+
+                    <div>
+
+                        <h3>
+                            ⚠️ Bottom 5 Performers
+                        </h3>
+
+                        <span class="bw-sub">
+                            Items requiring attention
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="worstList"
+                    class="bw-list">
+
+                    <p class="muted small">
+                        Loading...
+                    </p>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =====================================================
+             MENU ENGINEERING MATRIX
+             ===================================================== -->
+        <section class="card">
+
+            <div class="chart-header">
+
+                <div>
+
+                    <h3>
+                        🧠 Menu Engineering Matrix
+                    </h3>
+
+                    <p class="muted small">
+                        Classify dishes using popularity and profitability
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- Legend -->
+            <div class="matrix-legend">
+
+                <div class="matrix-legend-item">
+
+                    <span class="dot dot-star"></span>
+
+                    <span>
+                        ⭐ Star — High popularity + high margin
+                    </span>
+
+                </div>
+
+
+                <div class="matrix-legend-item">
+
+                    <span class="dot dot-plowhorse"></span>
+
+                    <span>
+                        🐴 Plowhorse — High popularity + low margin
+                    </span>
+
+                </div>
+
+
+                <div class="matrix-legend-item">
+
+                    <span class="dot dot-puzzle"></span>
+
+                    <span>
+                        🧩 Puzzle — Low popularity + high margin
+                    </span>
+
+                </div>
+
+
+                <div class="matrix-legend-item">
+
+                    <span class="dot dot-dog"></span>
+
+                    <span>
+                        🐕 Dog — Low popularity + low margin
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <!-- Matrix -->
+            <div class="matrix-grid">
+
+
+                <!-- Stars -->
+                <div class="matrix-quadrant quadrant-star">
+
+                    <h4>
+                        ⭐ Stars
+                    </h4>
+
+                    <p class="muted small">
+                        Popular + High margin
+                    </p>
+
+                    <div
+                        id="starsList"
+                        class="matrix-items">
+
+                        <p class="muted small">
+                            Loading...
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Puzzles -->
+                <div class="matrix-quadrant quadrant-puzzle">
+
+                    <h4>
+                        🧩 Puzzles
+                    </h4>
+
+                    <p class="muted small">
+                        Unpopular + High margin
+                    </p>
+
+                    <div
+                        id="puzzlesList"
+                        class="matrix-items">
+
+                        <p class="muted small">
+                            Loading...
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Plowhorses -->
+                <div class="matrix-quadrant quadrant-plowhorse">
+
+                    <h4>
+                        🐴 Plowhorses
+                    </h4>
+
+                    <p class="muted small">
+                        Popular + Low margin
+                    </p>
+
+                    <div
+                        id="plowhorsesList"
+                        class="matrix-items">
+
+                        <p class="muted small">
+                            Loading...
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Dogs -->
+                <div class="matrix-quadrant quadrant-dog">
+
+                    <h4>
+                        🐕 Dogs
+                    </h4>
+
+                    <p class="muted small">
+                        Unpopular + Low margin
+                    </p>
+
+                    <div
+                        id="dogsList"
+                        class="matrix-items">
+
+                        <p class="muted small">
+                            Loading...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             CHARTS
+             ===================================================== -->
+        <section class="charts-grid-2">
+
+
+            <!-- Profit by Item -->
+            <article class="card chart-card">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h3>
+                            💰 Profit by Item
+                        </h3>
+
+                        <p class="muted small">
+                            Top dishes ranked by net profit
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="chart-container-sm">
+
+                    <canvas id="profitChart"></canvas>
+
+                </div>
+
+            </article>
+
+
+            <!-- Popularity vs Margin -->
+            <article class="card chart-card">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h3>
+                            📊 Popularity vs Margin
+                        </h3>
+
+                        <p class="muted small">
+                            Bubble size represents revenue
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="chart-container-sm">
+
+                    <canvas id="scatterChart"></canvas>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =====================================================
+             FULL PERFORMANCE TABLE
+             ===================================================== -->
+        <section class="card">
+
+            <div class="chart-header">
+
+                <div>
+
+                    <h3>
+                        📋 All Items Performance
+                    </h3>
+
+                    <p class="muted small">
+                        Detailed performance of every menu item
+                    </p>
+
+                </div>
+
+
+                <div class="table-controls">
+
+                    <input
+                        type="text"
+                        id="searchInput"
+                        class="input"
+                        placeholder="🔍 Search item..."
+                        autocomplete="off"
+                        oninput="filterTable()">
+
+
+                    <select
+                        id="categoryFilterTable"
+                        class="select"
+                        onchange="filterTable()">
+
+                        <option value="">
+                            All Categories
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+
+            <!-- Table -->
+            <div class="table-wrapper">
+
+                <table
+                    class="data-table"
+                    id="itemsTable">
+
+                    <thead>
+
+                        <tr>
+
+                            <th
+                                data-sort="name"
+                                class="sortable">
+                                Item
+                            </th>
+
+                            <th
+                                data-sort="category"
+                                class="sortable">
+                                Category
+                            </th>
+
+                            <th
+                                data-sort="quantity_sold"
+                                class="sortable num">
+                                Qty Sold
+                            </th>
+
+                            <th
+                                data-sort="gross_revenue"
+                                class="sortable num">
+                                Gross Revenue
+                            </th>
+
+                            <th
+                                data-sort="net_revenue"
+                                class="sortable num">
+                                Net Revenue
+                            </th>
+
+                            <th
+                                data-sort="net_profit"
+                                class="sortable num">
+                                Net Profit
+                            </th>
+
+                            <th
+                                data-sort="profit_margin"
+                                class="sortable num">
+                                Margin
+                            </th>
+
+                            <th>
+                                Status
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody id="itemsTableBody">
+
+                        <tr>
+
+                            <td
+                                colspan="8"
+                                class="muted center">
+
+                                Loading items...
+
+                            </td>
+
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+
+            <!-- Table Footer -->
+            <div
+                style="
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                    gap:1rem;
+                    margin-top:1rem;
+                    padding:0 0.25rem;
+                    font-size:0.85rem;
+                    color:var(--gray-500);
+                ">
+
+                <span id="itemsCount">
+                    Showing 0 items
+                </span>
+
+                <span id="itemsUpdated">
+                    Updated just now
+                </span>
+
+            </div>
+
+        </section>
+
+
+    </div>
+
+
+    <!-- =========================================================
+         CHART.JS
+         ========================================================= -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
+    </script>
+
+
+    <!-- =========================================================
+         APPLICATION JAVASCRIPT
+         ========================================================= -->
+
+    <!-- Configuration -->
+    <script src="js/config.js"></script>
+
+    <!-- API -->
+    <script src="js/api.js"></script>
+
+    <!-- Authentication -->
+    <script src="js/auth.js"></script>
+
+    <!-- Utilities -->
+    <script src="js/utils.js"></script>
+
+    <!-- Shell -->
+    <script src="js/shell.js"></script>
+
+    <!-- Items / Dishes -->
+    <script src="js/items.js"></script>
+
+
+    <!-- =========================================================
+         SMALL COMPATIBILITY LAYER
+         ========================================================= -->
+    <script>
+
+        /*
+         * Keep the old function name working if the existing
+         * items.js uses loadItems() instead of loadDishes().
+         */
+        if (
+            typeof window.loadDishes !== "function" &&
+            typeof window.loadItems === "function"
+        ) {
+            window.loadDishes = window.loadItems;
+        }
+
+
+        /*
+         * Refresh helper.
+         */
+        if (typeof window.refreshDishes !== "function") {
+
+            window.refreshDishes = function () {
+
+                if (typeof window.loadDishes === "function") {
+                    window.loadDishes();
+                    return;
+                }
+
+                if (typeof window.loadItems === "function") {
+                    window.loadItems();
+                }
+
+            };
+
+        }
+
+
+        /*
+         * Keep the old exportCSV() function working with the
+         * newer exportDishes() button.
+         */
+        if (
+            typeof window.exportDishes !== "function" &&
+            typeof window.exportCSV === "function"
+        ) {
+
+            window.exportDishes = window.exportCSV;
+
+        }
+
+
+        /*
+         * Sync the main category filter with the table filter.
+         */
+        document.addEventListener("DOMContentLoaded", function () {
+
+            const mainCategory =
+                document.getElementById("categoryFilter");
+
+            const tableCategory =
+                document.getElementById("categoryFilterTable");
+
+
+            if (mainCategory && tableCategory) {
+
+                mainCategory.addEventListener("change", function () {
+
+                    tableCategory.value =
+                        mainCategory.value;
+
+                });
+
+
+                tableCategory.addEventListener("change", function () {
+
+                    mainCategory.value =
+                        tableCategory.value;
+
+                });
+
+            }
+
+        });
+
+    </script>
+
+</body>
+</html>

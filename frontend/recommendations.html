@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Recommendations — Kitchen Analytics</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/recommendations.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🍱</span>
+            <h1>Kitchen Analytics</h1>
+        </div>
+        <div class="nav-links">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="upload.html">Upload</a>
+            <a href="items.html">Items</a>
+            <a href="customers.html">Customers</a>
+            <a href="delivery.html">Delivery</a>
+            <a href="foodcost.html">Food Cost</a>
+            <a href="branches.html">Branches</a>
+            <a href="recommendations.html" class="active">💡 Insights</a>
+            <button onclick="logout()" class="btn btn-secondary btn-sm">Logout</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="page-header">
+            <div>
+                <h2>💡 AI Business Recommendations</h2>
+                <p class="muted">Automated insights based on your data — action items ranked by impact</p>
+            </div>
+            <div class="filter-group">
+                <select id="daysFilter" onchange="loadInsights()">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="all">All time</option>
+                </select>
+                <button onclick="loadInsights()" class="btn btn-secondary btn-sm">
+                    🔄 Refresh
+                </button>
+            </div>
+        </div>
+
+        <div id="alertBox" class="alert" style="display:none"></div>
+
+        <!-- SUMMARY CARDS -->
+        <section class="kpi-grid">
+            <div class="kpi-card danger-kpi">
+                <div class="kpi-icon">🚨</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Critical</span>
+                    <span class="kpi-value" id="kpiCritical">—</span>
+                    <span class="kpi-sub">urgent action needed</span>
+                </div>
+            </div>
+            <div class="kpi-card warning-kpi">
+                <div class="kpi-icon">⚠️</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Warnings</span>
+                    <span class="kpi-value" id="kpiWarning">—</span>
+                    <span class="kpi-sub">should investigate</span>
+                </div>
+            </div>
+            <div class="kpi-card success-kpi">
+                <div class="kpi-icon">✅</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Wins</span>
+                    <span class="kpi-value positive" id="kpiSuccess">—</span>
+                    <span class="kpi-sub">what's working well</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">📊</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Total Insights</span>
+                    <span class="kpi-value" id="kpiTotal">—</span>
+                    <span class="kpi-sub">across all categories</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- FILTERS -->
+        <section class="card">
+            <div class="filters-row">
+                <div class="filter-chips">
+                    <button class="chip active" data-filter="all" onclick="setFilter('all')">
+                        All
+                    </button>
+                    <button class="chip" data-filter="danger" onclick="setFilter('danger')">
+                        🚨 Critical
+                    </button>
+                    <button class="chip" data-filter="warning" onclick="setFilter('warning')">
+                        ⚠️ Warnings
+                    </button>
+                    <button class="chip" data-filter="success" onclick="setFilter('success')">
+                        ✅ Wins
+                    </button>
+                    <button class="chip" data-filter="info" onclick="setFilter('info')">
+                        ℹ️ Info
+                    </button>
+                </div>
+                <select id="categoryFilter" onchange="setCategoryFilter()">
+                    <option value="">All Categories</option>
+                </select>
+            </div>
+        </section>
+
+        <!-- INSIGHTS LIST -->
+        <section id="insightsList" class="insights-list">
+            <p class="muted center" style="padding:2rem">Loading insights...</p>
+        </section>
+
+        <!-- EMPTY STATE -->
+        <section id="emptyState" class="card empty-state" style="display:none">
+            <div class="empty-icon">🎉</div>
+            <h3>All Good!</h3>
+            <p class="muted">No critical issues detected. Keep up the great work.</p>
+            <p class="small muted">Need more insights? Upload more data to get deeper analysis.</p>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/kitchen-selector.js"></script>
+    <script src="js/recommendations.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/mobile-nav.js"></script>
+</body>
+</html>

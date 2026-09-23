@@ -1,0 +1,185 @@
+/* ============================================
+   CHART CONTAINERS & UTILITIES
+   Shared across all pages with Chart.js
+   ============================================ */
+
+/* ── Chart wrappers ── */
+.chart-wrapper {
+    position: relative;
+    width: 100%;
+    margin: 1rem 0;
+}
+
+.chart-wrapper.sm { height: 220px; }
+.chart-wrapper.md { height: 320px; }
+.chart-wrapper.lg { height: 420px; }
+.chart-wrapper.xl { height: 520px; }
+
+.chart-wrapper canvas {
+    display: block;
+    max-width: 100%;
+}
+
+/* ── Placeholder (before data loads) ── */
+.chart-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    min-height: 200px;
+    border: 1px dashed var(--border);
+}
+
+/* ── Empty state ── */
+.chart-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.chart-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+}
+
+.chart-empty p {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+/* ── Custom legend (below chart) ── */
+.chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.75rem;
+    justify-content: center;
+}
+
+.chart-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.chart-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.chart-legend-dot.circle {
+    border-radius: 50%;
+}
+
+/* ── Chart toolbar (toggle buttons) ── */
+.chart-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.chart-toolbar button {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+
+.chart-toolbar button:hover {
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.chart-toolbar button.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* ── Loading shimmer ── */
+.chart-loading {
+    background: linear-gradient(
+        90deg,
+        var(--bg) 25%,
+        #f0f0f0 50%,
+        var(--bg) 75%
+    );
+    background-size: 200% 100%;
+    animation: chart-shimmer 1.5s infinite;
+    border-radius: 8px;
+    min-height: 200px;
+}
+
+@keyframes chart-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ── Chart title & subtitle ── */
+.chart-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--text);
+}
+
+.chart-subtitle {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 1rem;
+}
+
+/* ── KPI mini charts (sparklines) ── */
+.sparkline-wrapper {
+    height: 40px;
+    width: 100%;
+    margin-top: 0.5rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .chart-wrapper.sm { height: 200px; }
+    .chart-wrapper.md { height: 240px; }
+    .chart-wrapper.lg { height: 280px; }
+    .chart-wrapper.xl { height: 320px; }
+
+    .chart-toolbar {
+        justify-content: flex-start;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 0.25rem;
+    }
+
+    .chart-toolbar button {
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .chart-legend {
+        gap: 0.75rem;
+    }
+
+    .chart-legend-item {
+        font-size: 0.75rem;
+    }
+}

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance — KitchenIQ</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/shell.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/pages.css">
+    <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+
+<div id="pageContent">
+
+    <div class="page-header">
+        <div class="page-header-left">
+            <h1>Finance</h1>
+            <p>Track your income, expenses and profitability</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-secondary btn-sm" onclick="exportFinance()">
+                📥 Export
+            </button>
+            <select class="select" id="daysFilterFinance" onchange="loadFinance()" style="width:auto">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- KPI Row -->
+    <section class="kpi-row">
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span class="kpi-label">Total Revenue</span>
+                <div class="kpi-icon green">💰</div>
+            </div>
+            <div class="kpi-value" id="finRevenue">—</div>
+            <div class="kpi-trend up">
+                <span>↑</span> <span>12.4%</span>
+                <span class="kpi-trend-label">vs. last week</span>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span class="kpi-label">Total Expenses</span>
+                <div class="kpi-icon red">💸</div>
+            </div>
+            <div class="kpi-value" id="finExpenses">—</div>
+            <div class="kpi-trend down">
+                <span>↑</span> <span>3.1%</span>
+                <span class="kpi-trend-label">vs. last week</span>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span class="kpi-label">Net Profit</span>
+                <div class="kpi-icon purple">📈</div>
+            </div>
+            <div class="kpi-value" id="finNetProfit">—</div>
+            <div class="kpi-trend up">
+                <span>↑</span> <span>15.1%</span>
+                <span class="kpi-trend-label">vs. last week</span>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span class="kpi-label">Profit Margin</span>
+                <div class="kpi-icon amber">📊</div>
+            </div>
+            <div class="kpi-value" id="finMargin">—</div>
+            <div class="kpi-trend up">
+                <span>↑</span> <span>4.6%</span>
+                <span class="kpi-trend-label">vs. last week</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Charts Row -->
+    <section class="grid-2">
+
+        <div class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3 class="panel-title">Revenue vs Expenses</h3>
+                    <p class="panel-subtitle">Compare income against total costs</p>
+                </div>
+            </div>
+            <div class="chart-box">
+                <canvas id="revenueVsExpensesChart"></canvas>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <h3 class="panel-title">Cost Breakdown</h3>
+            </div>
+            <div class="chart-box-sm" style="display:flex;align-items:center;justify-content:center">
+                <canvas id="costBreakdownChart"></canvas>
+            </div>
+            <div id="costLegend" style="margin-top:1rem"></div>
+        </div>
+
+    </section>
+
+    <!-- Expense Details -->
+    <section class="panel">
+        <div class="panel-header">
+            <h3 class="panel-title">Expense Details</h3>
+            <a href="#" class="panel-link" onclick="viewAllExpenses(event)">View All →</a>
+        </div>
+        <div class="data-table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th class="num">Amount</th>
+                        <th class="num">% of Revenue</th>
+                        <th>Trend</th>
+                    </tr>
+                </thead>
+                <tbody id="expensesTableBody">
+                    <tr>
+                        <td colspan="4" style="text-align:center;color:var(--gray-500);padding:2rem">
+                            Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Additional Insight -->
+    <section class="panel" style="background:linear-gradient(90deg, var(--success-50), #fff 60%); border-left:3px solid var(--success-500)">
+        <div style="display:flex;gap:1rem;align-items:flex-start">
+            <div style="width:40px;height:40px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex-shrink:0;border:1px solid #a7f3d0">
+                💡
+            </div>
+            <div style="flex:1;min-width:0">
+                <h4 style="font-size:0.95rem;font-weight:700;color:var(--success-700);margin-bottom:4px">
+                    Additional Insight
+                </h4>
+                <p style="font-size:0.85rem;color:var(--gray-700);margin:0 0 12px 0" id="financeInsight">
+                    Food cost is 31.2% of revenue. Keep it below 35% for better profitability.
+                </p>
+                <a href="insights.html" class="btn btn-secondary btn-sm">
+                    View Details →
+                </a>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/shell.js"></script>
+<script src="js/mobile-nav.js"></script>
+<script src="js/finance.js"></script>
+<script src="js/mobile-nav.js"></script>
+</body>
+</html>

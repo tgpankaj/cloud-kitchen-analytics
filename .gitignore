@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual Environment
+venv/
+.venv/
+
+# Environment
+.env
+
+# Database
+*.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

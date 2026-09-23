@@ -1,0 +1,145 @@
+/* ============================================
+   CUSTOMER ANALYTICS
+   ============================================ */
+
+/* ── Segments Grid ── */
+.segments-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.segment-card {
+    padding: 1.25rem;
+    border-radius: 12px;
+    text-align: center;
+    border: 2px solid;
+    transition: transform 0.15s;
+}
+
+.segment-card:hover {
+    transform: translateY(-3px);
+}
+
+.segment-icon {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.segment-card h4 {
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.segment-count {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+    margin: 0.75rem 0;
+}
+
+.segment-desc {
+    font-size: 0.75rem;
+    opacity: 0.75;
+    margin: 0.25rem 0;
+    line-height: 1.3;
+}
+
+.segment-action {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed rgba(0,0,0,0.1);
+}
+
+/* VIP */
+.segment-vip {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #f59e0b;
+    color: #78350f;
+}
+.segment-vip .segment-count { color: #b45309; }
+
+/* Loyal */
+.segment-loyal {
+    background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+    border-color: #22c55e;
+    color: #14532d;
+}
+.segment-loyal .segment-count { color: #15803d; }
+
+/* New */
+.segment-new {
+    background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+    border-color: #3b82f6;
+    color: #1e3a8a;
+}
+.segment-new .segment-count { color: #1d4ed8; }
+
+/* At Risk */
+.segment-risk {
+    background: linear-gradient(135deg, #fed7aa, #fdba74);
+    border-color: #f97316;
+    color: #7c2d12;
+}
+.segment-risk .segment-count { color: #c2410c; }
+
+/* Lost */
+.segment-lost {
+    background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+    border-color: #9ca3af;
+    color: #374151;
+}
+.segment-lost .segment-count { color: #4b5563; }
+
+/* ── Insight Card ── */
+.insight-card {
+    background: linear-gradient(135deg, #eff6ff, #dbeafe);
+    border: 1px solid #bfdbfe;
+}
+
+.insight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.insight-stat {
+    text-align: center;
+}
+
+.insight-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.25rem;
+}
+
+.insight-value.positive {
+    color: var(--success);
+}
+
+.insight-label {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .segments-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .segment-count {
+        font-size: 1.5rem;
+    }
+
+    .insight-value {
+        font-size: 1.4rem;
+    }
+}

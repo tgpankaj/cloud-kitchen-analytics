@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Cost Analysis — Kitchen Analytics</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/foodcost.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🍱</span>
+            <h1>Kitchen Analytics</h1>
+        </div>
+        <div class="nav-links">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="upload.html">Upload</a>
+            <a href="items.html">Items</a>
+            <a href="customers.html">Customers</a>
+            <a href="delivery.html">Delivery</a>
+            <a href="foodcost.html" class="active">Food Cost</a>
+            <button onclick="logout()" class="btn btn-secondary btn-sm">Logout</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="page-header">
+            <div>
+                <h2>💸 Food Cost Analysis</h2>
+                <p class="muted">True profitability using actual recipe costs</p>
+            </div>
+            <div class="filter-group">
+                <a href="ingredients.html" class="btn btn-secondary btn-sm">📦 Ingredients</a>
+                <select id="daysFilter" onchange="loadFoodCost()">
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="all">All time</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="alertBox" class="alert" style="display:none"></div>
+
+        <!-- SUMMARY KPIs -->
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon">📦</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Ingredients</span>
+                    <span class="kpi-value" id="kpiIngredients">—</span>
+                    <span class="kpi-sub" id="kpiIngredientsSub">in inventory</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">💰</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Stock Value</span>
+                    <span class="kpi-value" id="kpiStockValue">—</span>
+                    <span class="kpi-sub">current worth</span>
+                </div>
+            </div>
+            <div class="kpi-card warning-card">
+                <div class="kpi-icon">⚠️</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Low Stock Alerts</span>
+                    <span class="kpi-value negative" id="kpiLowStock">—</span>
+                    <span class="kpi-sub">need reorder</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">✅</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Recipe Coverage</span>
+                    <span class="kpi-value" id="kpiCoverage">—</span>
+                    <span class="kpi-sub" id="kpiCoverageSub">items with recipes</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- STOCK ALERTS -->
+        <section class="card" id="stockAlertsCard" style="display:none">
+            <div class="chart-header">
+                <div>
+                    <h3>🚨 Stock Alerts</h3>
+                    <p class="muted small">Ingredients below reorder threshold</p>
+                </div>
+            </div>
+            <div id="stockAlertsList" class="alerts-list"></div>
+        </section>
+
+        <!-- TRUE PROFITABILITY -->
+        <section class="card">
+            <div class="chart-header">
+                <div>
+                    <h3>🎯 True Profitability (with Recipe Costs)</h3>
+                    <p class="muted small">Actual cost vs estimated — see where you're losing money</p>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="num">Sold</th>
+                            <th class="num">Selling Price</th>
+                            <th class="num">Est. Cost</th>
+                            <th class="num">Actual Cost</th>
+                            <th class="num">Variance</th>
+                            <th class="num">True Margin</th>
+                            <th class="num">Food Cost %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trueProfitBody">
+                        <tr><td colspan="8" class="muted center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- MISSING RECIPES -->
+        <section class="card" id="missingCard" style="display:none">
+            <div class="chart-header">
+                <div>
+                    <h3>📝 Items Without Recipes</h3>
+                    <p class="muted small">Add recipes to get accurate cost analysis</p>
+                </div>
+            </div>
+            <div id="missingList" class="missing-list"></div>
+        </section>
+
+        <!-- FOOD COST CHART -->
+        <section class="charts-grid-2">
+            <div class="card chart-card">
+                <div class="chart-header">
+                    <h3>📊 Food Cost % by Item</h3>
+                    <p class="muted small">Industry benchmark: 28-35%</p>
+                </div>
+                <div class="chart-container-sm">
+                    <canvas id="foodCostChart"></canvas>
+                </div>
+            </div>
+            <div class="card chart-card">
+                <div class="chart-header">
+                    <h3>🏆 Best True Margin Items</h3>
+                </div>
+                <div class="chart-container-sm">
+                    <canvas id="marginChart"></canvas>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Recipe Modal -->
+    <div id="recipeModal" class="modal" style="display:none">
+        <div class="modal-overlay" onclick="closeRecipeModal()"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3 id="recipeModalTitle">Recipe</h3>
+                <button onclick="closeRecipeModal()" class="modal-close">×</button>
+            </div>
+            <div id="recipeModalBody"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/foodcost.js"></script>
+    <script src="js/kitchen-selector.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/mobile-nav.js"></script>
+</body>
+</html>
+

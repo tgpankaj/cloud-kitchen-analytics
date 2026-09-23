@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pricing — Kitchen Analytics</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🍱</span>
+            <h1>Kitchen Analytics</h1>
+        </div>
+        <div class="nav-links">
+            <a href="dashboard.html">Dashboard</a>
+            <button onclick="logout()" class="btn btn-secondary btn-sm">Logout</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <h2 style="text-align:center;margin-bottom:2rem">Choose Your Plan</h2>
+
+        <div id="alertBox" class="alert" style="display:none"></div>
+
+        <div class="grid-3">
+            <div class="pricing-card">
+                <h3>Starter</h3>
+                <div class="price">₹499<span>/month</span></div>
+                <ul>
+                    <li>✅ 1 Kitchen</li>
+                    <li>✅ CSV Upload</li>
+                    <li>✅ All analytics</li>
+                    <li>✅ AI Insights</li>
+                </ul>
+                <button onclick="payNow('starter')" class="btn btn-secondary">Choose Starter</button>
+            </div>
+            <div class="pricing-card featured">
+                <span class="badge-popular">Most Popular</span>
+                <h3>Pro</h3>
+                <div class="price">₹1,499<span>/month</span></div>
+                <ul>
+                    <li>✅ 3 Kitchens</li>
+                    <li>✅ Everything in Starter</li>
+                    <li>✅ Food cost analysis</li>
+                    <li>✅ Priority support</li>
+                </ul>
+                <button onclick="payNow('pro')" class="btn btn-primary">Choose Pro</button>
+            </div>
+            <div class="pricing-card">
+                <h3>Business</h3>
+                <div class="price">₹3,999<span>/month</span></div>
+                <ul>
+                    <li>✅ 10 Kitchens</li>
+                    <li>✅ Everything in Pro</li>
+                    <li>✅ API access</li>
+                    <li>✅ Dedicated support</li>
+                </ul>
+                <button onclick="payNow('business')" class="btn btn-secondary">Choose Business</button>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script>
+        async function payNow(plan) {
+            try {
+                const order = await apiFetch('/api/payments/create-order', {
+                    method: 'POST',
+                    body: JSON.stringify({ plan })
+                });
+
+                const options = {
+                    key: order.key_id,
+                    amount: order.amount,
+                    currency: order.currency,
+                    name: 'Kitchen Analytics',
+                    description: `${order.plan_name} Plan`,
+                    order_id: order.order_id,
+                    handler: async function(response) {
+                        try {
+                            await apiFetch('/api/payments/verify', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    razorpay_order_id: response.razorpay_order_id,
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    razorpay_signature: response.razorpay_signature,
+                                    plan: plan
+                                })
+                            });
+                            showAlert('Payment successful! Subscription activated.', 'success');
+                            setTimeout(() => window.location.href = 'dashboard.html', 2000);
+                        } catch (err) {
+                            showAlert('Verification failed: ' + err.message, 'error');
+                        }
+                    },
+                    prefill: { name: '', email: '' },
+                    theme: { color: '#ff6b35' }
+                };
+
+                const rzp = new Razorpay(options);
+                rzp.open();
+
+            } catch (err) {
+                showAlert('Payment failed: ' + err.message, 'error');
+            }
+        }
+    </script>
+    <script src="js/navbar.js"></script>
+    <script src="js/mobile-nav.js"></script>
+</body>
+</html>

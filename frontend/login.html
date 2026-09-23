@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — KitchenIQ</title>
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="auth-body">
+
+<div class="auth-split">
+
+    <!-- ── LEFT: Hero Panel ── -->
+    <aside class="auth-hero">
+        <div class="auth-hero-brand">
+            <div class="auth-hero-brand-icon">🍱</div>
+            <div class="auth-hero-brand-text">
+                <h1>Kitchen<span class="accent">IQ</span></h1>
+                <p>Cloud Kitchen Intelligence</p>
+            </div>
+        </div>
+
+        <div class="auth-hero-content">
+            <h2 class="auth-hero-headline">
+                Smarter Decisions.
+                <span class="highlight">Higher Profits.</span>
+            </h2>
+            <p class="auth-hero-description">
+                Track your orders, analyze performance, understand your customers
+                and get AI-powered insights to grow your cloud kitchen business.
+            </p>
+
+            <div class="auth-hero-features">
+                <div class="auth-hero-feature">
+                    <div class="auth-hero-feature-icon">📊</div>
+                    <div class="auth-hero-feature-text">
+                        <h4>Real-time Analytics</h4>
+                        <p>Track revenue, orders & profit</p>
+                    </div>
+                </div>
+                <div class="auth-hero-feature">
+                    <div class="auth-hero-feature-icon">👥</div>
+                    <div class="auth-hero-feature-text">
+                        <h4>Customer Insights</h4>
+                        <p>Understand your audience</p>
+                    </div>
+                </div>
+                <div class="auth-hero-feature">
+                    <div class="auth-hero-feature-icon">🎯</div>
+                    <div class="auth-hero-feature-text">
+                        <h4>Smart Recommendations</h4>
+                        <p>Know what to promote</p>
+                    </div>
+                </div>
+                <div class="auth-hero-feature">
+                    <div class="auth-hero-feature-icon">💚</div>
+                    <div class="auth-hero-feature-text">
+                        <h4>Better Profit Margins</h4>
+                        <p>Optimize costs & boost profits</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="auth-hero-footer">
+            <div class="auth-hero-footer-text">
+                Your Kitchen.<br>Our Analytics.
+            </div>
+        </div>
+    </aside>
+
+    <!-- ── RIGHT: Form Panel ── -->
+    <main class="auth-form-panel">
+        <div class="auth-form-container">
+
+            <div class="auth-top-link">
+                New here? <a href="signup.html">Create an account →</a>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active">Login</button>
+                <a href="signup.html" class="auth-tab" style="text-decoration:none">Register</a>
+            </div>
+
+            <div class="auth-header">
+                <h2>Welcome Back!</h2>
+                <p>Sign in to your account and continue your journey with KitchenIQ.</p>
+            </div>
+
+            <div id="errorBox" class="auth-alert auth-alert-error" style="display:none"></div>
+
+            <form id="loginForm" class="auth-form" novalidate>
+
+                <div class="auth-field">
+                    <label for="email">Email Address</label>
+                    <div class="auth-input-wrap">
+                        <span class="auth-input-icon">✉️</span>
+                        <input
+                            type="email"
+                            id="email"
+                            class="auth-input"
+                            placeholder="Enter your email address"
+                            autocomplete="email"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="auth-field">
+                    <label for="password">Password</label>
+                    <div class="auth-input-wrap">
+                        <span class="auth-input-icon">🔒</span>
+                        <input
+                            type="password"
+                            id="password"
+                            class="auth-input"
+                            placeholder="Enter your password"
+                            autocomplete="current-password"
+                            required
+                        >
+                        <button type="button"
+                                class="auth-password-toggle"
+                                onclick="togglePassword('password', this)"
+                                aria-label="Toggle password visibility">👁️</button>
+                    </div>
+                </div>
+
+                <div class="auth-remember-row">
+                    <label class="auth-checkbox">
+                        <input type="checkbox" id="rememberMe" checked>
+                        <span>Remember me</span>
+                    </label>
+                    <a href="#" class="auth-forgot">Forgot password?</a>
+                </div>
+
+                <button type="submit" class="auth-submit" id="loginBtn">
+                    <span>Login</span>
+                    <span class="arrow">→</span>
+                </button>
+
+            </form>
+
+            <div class="auth-divider">or</div>
+
+            <button type="button" class="auth-google-btn" onclick="googleLogin()">
+                <svg width="18" height="18" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Continue with Google
+            </button>
+
+            <div class="auth-security">
+                <div class="auth-security-icon">🛡️</div>
+                <div class="auth-security-text">
+                    <h5>Your data is safe with us</h5>
+                    <p>We use industry-standard security practices to protect your information.</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script>
+    function togglePassword(fieldId, btn) {
+        const field = document.getElementById(fieldId);
+        if (field.type === 'password') {
+            field.type = 'text';
+            btn.textContent = '🙈';
+        } else {
+            field.type = 'password';
+            btn.textContent = '👁️';
+        }
+    }
+
+    function googleLogin() {
+        alert('Google login coming soon! Please use email/password.');
+    }
+    
+</script>
+<script src="js/mobile-nav.js"></script>
+</body>
+</html>

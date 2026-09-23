@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Dashboard — KitchenIQ</title>
+
+    <!-- Google Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/shell.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script src="js/mobile-nav.js"></script>
+</head>
+
+<body>
+
+    <!--
+        Page content.
+        shell.js is responsible for wrapping this content
+        inside the dashboard layout/sidebar/navbar.
+    -->
+    <div id="pageContent">
+
+        <!-- ================================
+             PAGE GREETING
+        ================================= -->
+        <div class="page-greeting">
+            <h1>
+                Good morning,
+                <span id="userFirstName">Admin</span>!
+                <span class="wave">👋</span>
+            </h1>
+
+            <p>
+                Here's what's happening with your cloud kitchen today.
+            </p>
+        </div>
+
+
+        <!-- ================================
+             KPI CARDS
+        ================================= -->
+        <section class="kpi-row">
+
+            <!-- Revenue -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Total Revenue</span>
+
+                    <div class="kpi-icon green">
+                        💰
+                    </div>
+                </div>
+
+                <div class="kpi-value" id="kpiGross">
+                    —
+                </div>
+
+                <div class="kpi-trend up" id="kpiGrossTrend">
+                    <span class="kpi-trend-arrow">↑</span>
+                    <span>—</span>
+                    <span class="kpi-trend-label">
+                        vs. last week
+                    </span>
+                </div>
+            </div>
+
+
+            <!-- Orders -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Total Orders</span>
+
+                    <div class="kpi-icon blue">
+                        📦
+                    </div>
+                </div>
+
+                <div class="kpi-value" id="kpiOrders">
+                    —
+                </div>
+
+                <div class="kpi-trend up" id="kpiOrdersTrend">
+                    <span class="kpi-trend-arrow">↑</span>
+                    <span>—</span>
+                    <span class="kpi-trend-label">
+                        vs. last week
+                    </span>
+                </div>
+            </div>
+
+
+            <!-- Net Profit -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Net Profit</span>
+
+                    <div class="kpi-icon purple">
+                        📈
+                    </div>
+                </div>
+
+                <div class="kpi-value" id="kpiNet">
+                    —
+                </div>
+
+                <div class="kpi-trend up" id="kpiNetTrend">
+                    <span class="kpi-trend-arrow">↑</span>
+                    <span>—</span>
+                    <span class="kpi-trend-label">
+                        vs. last week
+                    </span>
+                </div>
+            </div>
+
+
+            <!-- Rating -->
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Avg. Rating</span>
+
+                    <div class="kpi-icon amber">
+                        ⭐
+                    </div>
+                </div>
+
+                <div class="kpi-value" id="kpiRating">
+                    4.4
+                </div>
+
+                <div class="kpi-trend up" id="kpiRatingTrend">
+                    <span class="kpi-trend-arrow">↑</span>
+                    <span>0.2</span>
+
+                    <span class="kpi-trend-label">
+                        vs. last week
+                    </span>
+                </div>
+            </div>
+
+        </section>
+
+
+        <!-- ================================
+             MAIN DASHBOARD GRID
+        ================================= -->
+        <div class="dashboard-grid">
+
+            <!-- ============================
+                 LEFT / MAIN CONTENT
+            ============================= -->
+            <div class="dashboard-main">
+
+
+                <!-- ============================
+                     REVENUE & PROFIT TREND
+                ============================= -->
+                <section class="panel">
+
+                    <div class="panel-header">
+
+                        <div>
+                            <h3 class="panel-title">
+                                Revenue &amp; Profit Trend
+                            </h3>
+                        </div>
+
+                        <div
+                            style="
+                                display:flex;
+                                gap:0.5rem;
+                                align-items:center;
+                                flex-wrap:wrap;
+                            "
+                        >
+
+                            <!-- Chart Toggle -->
+                            <div class="chart-toggle">
+
+                                <button
+                                    class="toggle-btn active"
+                                    data-view="daily"
+                                    type="button"
+                                >
+                                    Daily
+                                </button>
+
+                                <button
+                                    class="toggle-btn"
+                                    data-view="weekly"
+                                    type="button"
+                                >
+                                    Weekly
+                                </button>
+
+                                <button
+                                    class="toggle-btn"
+                                    data-view="monthly"
+                                    type="button"
+                                >
+                                    Monthly
+                                </button>
+
+                            </div>
+
+
+                            <!-- Date Filter -->
+                            <select
+                                id="daysFilter"
+                                onchange="loadDashboard()"
+                                style="
+                                    padding:5px 10px;
+                                    border:1px solid var(--gray-200);
+                                    border-radius:8px;
+                                    font-size:0.8rem;
+                                    background:#fff;
+                                    cursor:pointer;
+                                    font-family:inherit;
+                                "
+                            >
+                                <option value="7">
+                                    7 Days
+                                </option>
+
+                                <option value="30" selected>
+                                    30 Days
+                                </option>
+
+                                <option value="90">
+                                    90 Days
+                                </option>
+                            </select>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- Trend Chart -->
+                    <div class="chart-box">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+
+                </section>
+
+
+                <!-- ============================
+                     MINI CHARTS
+                ============================= -->
+                <section
+                    style="
+                        display:grid;
+                        grid-template-columns:1fr 1fr;
+                        gap:1.5rem;
+                    "
+                >
+
+                    <!-- Peak Hours -->
+                    <div class="panel">
+
+                        <div class="panel-header">
+                            <h3 class="panel-title">
+                                ⏰ Peak Ordering Time
+                            </h3>
+                        </div>
+
+                        <div class="chart-box-sm">
+                            <canvas id="peakHoursChart"></canvas>
+                        </div>
+
+                    </div>
+
+
+                    <!-- Customer Overview -->
+                    <div class="panel">
+
+                        <div class="panel-header">
+                            <h3 class="panel-title">
+                                👥 Customer Overview
+                            </h3>
+                        </div>
+
+                        <div
+                            class="chart-box-sm"
+                            style="
+                                display:flex;
+                                align-items:center;
+                                justify-content:center;
+                            "
+                        >
+                            <canvas id="customerChart"></canvas>
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                <!-- ============================
+                     PROFIT MARGIN BY DISH
+                ============================= -->
+                <section class="panel">
+
+                    <div class="panel-header">
+
+                        <h3 class="panel-title">
+                            📊 Profit Margin by Dish
+                        </h3>
+
+                        <a
+                            href="items.html"
+                            class="panel-link"
+                        >
+                            View All →
+                        </a>
+
+                    </div>
+
+
+                    <div
+                        class="progress-list"
+                        id="profitMarginList"
+                    >
+                        <p
+                            style="
+                                color:var(--gray-500);
+                                font-size:0.85rem;
+                            "
+                        >
+                            Loading...
+                        </p>
+                    </div>
+
+                </section>
+
+
+                <!-- ============================
+                     RECENT ORDERS
+                ============================= -->
+                <section class="panel">
+
+                    <div class="panel-header">
+
+                        <h3 class="panel-title">
+                            Recent Orders
+                        </h3>
+
+                        <a
+                            href="analytics.html"
+                            class="panel-link"
+                        >
+                            View All →
+                        </a>
+
+                    </div>
+
+
+                    <div style="overflow-x:auto">
+
+                        <table class="orders-table">
+
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Customer</th>
+                                    <th>Dish</th>
+                                    <th style="text-align:right">
+                                        Amount
+                                    </th>
+                                    <th>Status</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+
+
+                            <tbody id="recentOrdersBody">
+
+                                <tr>
+                                    <td
+                                        colspan="6"
+                                        style="
+                                            text-align:center;
+                                            color:var(--gray-500);
+                                            padding:2rem;
+                                        "
+                                    >
+                                        Loading orders...
+                                    </td>
+                                </tr>
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+
+            <!-- ============================
+                 RIGHT / SIDE PANEL
+            ============================= -->
+            <aside class="dashboard-side">
+
+
+                <!-- ============================
+                     AI BUSINESS INSIGHTS
+                ============================= -->
+                <div class="insights-panel">
+
+                    <div class="insights-panel-header">
+
+                        <div class="insights-panel-icon">
+                            💡
+                        </div>
+
+                        <div>
+                            <h3>
+                                AI Business Insights
+                            </h3>
+
+                            <p>
+                                Smart recommendations to grow
+                                your business
+                            </p>
+                        </div>
+
+                    </div>
+
+
+                    <div
+                        class="insights-list"
+                        id="insightsList"
+                    >
+                        <p
+                            style="
+                                color:var(--gray-500);
+                                font-size:0.85rem;
+                                text-align:center;
+                                padding:2rem 0;
+                            "
+                        >
+                            Loading insights...
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <!-- ============================
+                     PROMO BANNER
+                ============================= -->
+                <div class="promo-banner">
+
+                    <div class="promo-content">
+
+                        <div class="promo-badge">
+                            Grow Your Profits
+                        </div>
+
+                        <h3>
+                            Promote Best Sellers
+                            at the Right Time
+                        </h3>
+
+                        <p>
+                            Increase evening promotions
+                            for your top dishes
+                            (7 PM – 9 PM) to get
+                            more orders.
+                        </p>
+
+                        <a
+                            href="recommendations.html"
+                            class="promo-btn"
+                        >
+                            View Full Report →
+                        </a>
+
+                    </div>
+
+
+                    <div class="promo-dots">
+
+                        <span class="active"></span>
+                        <span></span>
+                        <span></span>
+
+                    </div>
+
+                </div>
+
+            </aside>
+
+        </div>
+
+    </div>
+
+
+    <!-- ================================
+         JAVASCRIPT
+    ================================= -->
+
+    <!-- Chart.js -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+    ></script>
+
+    <!-- Project JS -->
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/shell.js"></script>
+    <script src="js/dashboard.js"></script>
+
+</body>
+</html>

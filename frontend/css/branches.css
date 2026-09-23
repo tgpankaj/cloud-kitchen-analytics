@@ -1,0 +1,283 @@
+/* ============================================
+   BRANCH COMPARISON
+   ============================================ */
+
+/* ── Ranking highlight ── */
+.rank-1 td:first-child {
+    border-left: 4px solid var(--success);
+}
+
+.rank-2 td:first-child {
+    border-left: 4px solid var(--info);
+}
+
+.rank-3 td:first-child {
+    border-left: 4px solid var(--warning);
+}
+
+.kitchen-name-cell {
+    font-weight: 600;
+}
+
+.kitchen-city {
+    font-size: 0.75rem;
+    color: var(--muted);
+    display: block;
+    margin-top: 0.15rem;
+}
+
+/* ── Top by kitchen ── */
+.top-by-kitchen {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.kitchen-top-card {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border);
+}
+
+.kitchen-top-card h4 {
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.top-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+}
+
+.top-item-rank {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    text-align: center;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 20px;
+    margin-right: 0.5rem;
+}
+
+.top-item-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.top-item-rev {
+    font-weight: 600;
+    color: var(--success);
+    font-size: 0.85rem;
+}
+
+/* ── Kitchen cards ── */
+.kitchen-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.kitchen-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+}
+
+.kitchen-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+}
+
+.kitchen-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.kitchen-card-header h4 {
+    font-size: 1.05rem;
+    margin: 0;
+}
+
+.kitchen-status {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 100px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.kitchen-status.active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.kitchen-status.inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.kitchen-card-location {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 1rem;
+}
+
+.kitchen-card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.kitchen-stat {
+    text-align: left;
+}
+
+.kitchen-stat-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 0.2rem;
+}
+
+.kitchen-stat-value {
+    display: block;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.kitchen-stat-value.positive {
+    color: var(--success);
+}
+
+.kitchen-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.kitchen-card-actions .btn {
+    flex: 1;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+/* ── Modal ── */
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(2px);
+}
+
+.modal-content {
+    position: relative;
+    background: var(--card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 1.75rem;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.75rem;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+}
+
+.modal-close:hover {
+    background: var(--bg);
+    color: var(--text);
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .kitchen-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .top-by-kitchen {
+        grid-template-columns: 1fr;
+    }
+
+    .kitchen-card-stats {
+        grid-template-columns: 1fr;
+    }
+}
+

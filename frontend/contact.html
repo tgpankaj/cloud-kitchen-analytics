@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact — Kitchen Analytics</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <style>
+        .contact-page {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 3rem 1.5rem;
+        }
+        .contact-page h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        .contact-page > p {
+            text-align: center;
+            color: var(--muted);
+            margin-bottom: 2.5rem;
+        }
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2.5rem;
+        }
+        .contact-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .contact-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+        .contact-card h3 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .contact-card p, .contact-card a {
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+        .contact-card a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🍱</span>
+            <h1>Kitchen Analytics</h1>
+        </div>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="login.html">Login</a>
+            <a href="signup.html" class="btn btn-primary">Start Free Trial</a>
+        </div>
+    </nav>
+
+    <main class="contact-page">
+        <h1>Get in Touch</h1>
+        <p>We'd love to hear from you. Reach out for support, feedback, or partnership.</p>
+
+        <div class="contact-grid">
+            <div class="contact-card">
+                <div class="contact-icon">📧</div>
+                <h3>Email Support</h3>
+                <p><a href="mailto:support@kitchenanalytics.in">support@kitchenanalytics.in</a></p>
+                <p>Response within 24 hours</p>
+            </div>
+
+            <div class="contact-card">
+                <div class="contact-icon">💬</div>
+                <h3>WhatsApp</h3>
+                <p>+91-XXXXX-XXXXX</p>
+                <p>Mon-Fri, 10 AM - 6 PM IST</p>
+            </div>
+
+            <div class="contact-card">
+                <div class="contact-icon">💼</div>
+                <h3>Business</h3>
+                <p><a href="mailto:hello@kitchenanalytics.in">hello@kitchenanalytics.in</a></p>
+                <p>Partnerships & press</p>
+            </div>
+
+            <div class="contact-card">
+                <div class="contact-icon">🐛</div>
+                <h3>Bug Reports</h3>
+                <p><a href="mailto:bugs@kitchenanalytics.in">bugs@kitchenanalytics.in</a></p>
+                <p>Or GitHub issues</p>
+            </div>
+        </div>
+
+        <div class="card" style="padding:2rem;text-align:center">
+            <h3>For urgent issues</h3>
+            <p class="muted">Existing customers with critical issues should email with subject line <code>[URGENT]</code></p>
+        </div>
+    </main>
+    <script src="js/navbar.js"></script>
+    <script src="js/mobile-nav.js"></script>
+</body>
+</html>

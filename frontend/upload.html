@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Data — Kitchen Analytics</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/upload.css">
+    <link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/shell.css">
+<link rel="stylesheet" href="css/pages.css">
+<link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🍱</span>
+            <h1>Kitchen Analytics</h1>
+        </div>
+        <div class="nav-links">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="upload.html" class="active">Upload</a>
+            <a href="analytics.html">Analytics</a>
+            <a href="items.html">Items</a>
+            <a href="recommendations.html">💡 Insights</a>
+            <button onclick="logout()" class="btn btn-secondary btn-sm">Logout</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- HEADER -->
+        <div class="page-header">
+            <div>
+                <h2>Upload Order Data</h2>
+                <p class="muted">Import your Swiggy/Zomato sales CSV to analyze profitability</p>
+            </div>
+            <button onclick="downloadTemplate()" class="btn btn-secondary">
+                📥 Download Template
+            </button>
+        </div>
+
+        <!-- ALERTS -->
+        <div id="alertBox" class="alert" style="display:none"></div>
+
+        <!-- UPLOAD CARD -->
+        <div class="card upload-card">
+            <div class="dropzone" id="dropzone">
+                <input type="file" id="fileInput" accept=".csv" hidden>
+                <div class="dropzone-content" id="dropzoneContent">
+                    <div class="dropzone-icon">📁</div>
+                    <h3>Drop your CSV file here</h3>
+                    <p class="muted">or</p>
+                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                        Browse Files
+                    </button>
+                    <p class="small muted">Maximum 10MB • .csv files only</p>
+                </div>
+
+                <!-- PROGRESS STATE -->
+                <div class="dropzone-content" id="progressState" style="display:none">
+                    <div class="spinner"></div>
+                    <h3>Uploading...</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p class="muted small" id="progressText">Reading file...</p>
+                </div>
+
+                <!-- SUCCESS STATE -->
+                <div class="dropzone-content" id="successState" style="display:none">
+                    <div class="success-icon">✅</div>
+                    <h3>Upload Successful!</h3>
+                    <div id="statsDisplay" class="stats-grid"></div>
+                    <div class="btn-row">
+                        <a href="dashboard.html" class="btn btn-primary">View Dashboard</a>
+                        <button onclick="resetUpload()" class="btn btn-secondary">Upload Another</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- INFO SECTION -->
+        <div class="grid-2">
+            <div class="card">
+                <h3>📋 Expected Columns</h3>
+                <p class="small">Required columns in your CSV:</p>
+                <ul class="column-list">
+                    <li><code>order_date</code> — YYYY-MM-DD format</li>
+                    <li><code>platform</code> — Swiggy / Zomato / Direct</li>
+                    <li><code>item_name</code> — Dish name</li>
+                    <li><code>quantity</code> — Number of items</li>
+                    <li><code>unit_price</code> — Price per item (₹)</li>
+                </ul>
+                <p class="small muted">Optional: <code>order_time</code>, <code>customer_phone</code>, <code>commission_pct</code>, <code>prep_time</code>, <code>delivery_time</code>, <code>status</code></p>
+            </div>
+
+            <div class="card">
+                <h3>📤 Upload History</h3>
+                <div id="historyList">
+                    <p class="muted small">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+
+     
+
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/upload.js"></script>
+    <script src="js/kitchen-selector.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/mobile-nav.js"></script>
+</body>
+</html>
+

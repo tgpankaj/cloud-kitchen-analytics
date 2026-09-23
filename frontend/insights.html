@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Insights — KitchenIQ</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/shell.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/pages.css">
+    <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+
+<div id="pageContent">
+
+    <div class="page-header">
+        <div class="page-header-left">
+            <h1>Business Insights</h1>
+            <p>AI-powered recommendations to grow your business</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-secondary btn-sm" onclick="refreshInsights()">
+                🔄 Refresh
+            </button>
+            <select class="select" id="daysFilterInsights" onchange="loadInsights()" style="width:auto">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Filter chips -->
+    <div class="tabs" style="margin-bottom:1.25rem">
+        <button class="tab active" data-filter="all" onclick="setFilter('all', this)">All</button>
+        <button class="tab" data-filter="promote" onclick="setFilter('promote', this)">🚀 Promote</button>
+        <button class="tab" data-filter="opportunity" onclick="setFilter('opportunity', this)">📈 Growth</button>
+        <button class="tab" data-filter="optimize" onclick="setFilter('optimize', this)">⚙️ Optimize</button>
+        <button class="tab" data-filter="review" onclick="setFilter('review', this)">⚠️ Review</button>
+    </div>
+
+    <!-- Insights Grid -->
+    <div id="insightsGrid" class="grid-3" style="align-items:stretch">
+        <p style="color:var(--gray-500);text-align:center;padding:3rem;grid-column:1/-1">
+            Loading insights...
+        </p>
+    </div>
+
+    <!-- Additional Insights -->
+    <section class="panel" style="margin-top:1.5rem">
+        <div class="panel-header">
+            <div>
+                <h3 class="panel-title">📋 Additional Insights</h3>
+                <p class="panel-subtitle">More observations from your data</p>
+            </div>
+        </div>
+        <div id="additionalInsights" style="display:flex;flex-direction:column;gap:0.75rem">
+            <p style="color:var(--gray-500);font-size:0.85rem">Loading...</p>
+        </div>
+    </section>
+
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/shell.js"></script>
+<script src="js/mobile-nav.js"></script>
+<script src="js/insights.js"></script>
+<script src="js/mobile-nav.js"></script>
+</body>
+</html>
+

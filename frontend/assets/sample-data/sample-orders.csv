@@ -1,0 +1,21 @@
+order_date,order_time,platform,customer_phone,item_name,quantity,unit_price,commission_pct,prep_time,delivery_time,status
+2026-09-01,19:30,Swiggy,9876543210,Paneer Biryani,2,180,25,15,35,delivered
+2026-09-01,20:00,Zomato,9876543211,Veg Biryani,1,160,28,15,40,delivered
+2026-09-01,20:15,Swiggy,9876543212,Paneer Tikka,2,220,25,20,35,delivered
+2026-09-02,19:00,Direct,9876543213,Masala Dosa,3,120,0,12,25,delivered
+2026-09-02,19:30,Zomato,9876543214,Chicken Biryani,1,250,28,20,40,delivered
+2026-09-02,20:00,Swiggy,9876543215,Dal Makhani,2,150,25,15,35,delivered
+2026-09-03,18:45,Swiggy,9876543216,Chole Bhature,2,140,25,15,30,delivered
+2026-09-03,19:15,Zomato,9876543217,Butter Chicken,1,280,28,25,45,delivered
+2026-09-03,20:30,Direct,9876543218,Paneer Tikka,1,220,0,20,30,delivered
+2026-09-04,19:00,Swiggy,9876543219,Veg Fried Rice,2,160,25,12,30,delivered
+2026-09-04,19:45,Zomato,9876543220,Manchurian,2,180,28,15,35,delivered
+2026-09-04,20:15,Swiggy,9876543221,Paneer Biryani,1,180,25,15,35,delivered
+2026-09-05,18:30,Direct,9876543222,Masala Dosa,2,120,0,12,25,delivered
+2026-09-05,19:30,Zomato,9876543223,Chicken Biryani,2,250,28,20,40,delivered
+2026-09-05,20:00,Swiggy,9876543224,Dal Makhani,1,150,25,15,35,delivered
+2026-09-06,19:00,Swiggy,9876543225,Chole Bhature,1,140,25,15,30,delivered
+2026-09-06,19:30,Zomato,9876543226,Butter Chicken,2,280,28,25,45,delivered
+2026-09-06,20:00,Direct,9876543227,Veg Biryani,2,160,0,15,30,delivered
+2026-09-07,19:15,Swiggy,9876543228,Veg Fried Rice,1,160,25,12,30,delivered
+2026-09-07,20:15,Zomato,9876543229,Paneer Tikka,2,220,28,20,35,delivered

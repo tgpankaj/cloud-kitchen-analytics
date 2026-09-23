@@ -1,0 +1,123 @@
+from flask import Flask, jsonify
+from flask_cors import CORS
+from flask_limiter import Limiter 
+from flask_limiter.util import get_remote_address 
+from config import Config
+import os
+import logging
+
+
+
+# Blueprint imports
+from routes.auth import auth_bp
+from routes.upload import upload_bp
+from routes.analytics import analytics_bp
+from routes.items import items_bp
+from routes.customers import customers_bp
+from routes.delivery import delivery_bp
+from routes.foodcost import foodcost_bp
+from routes.branches import branches_bp
+from routes.recommendations import recommendations_bp
+from routes.payments import payments_bp
+from logging.handlers import RotatingFileHandler
+from routes.dashboard import dashboard_bp
+from routes.finance import finance_bp
+from routes.search import search_bp
+from routes.reports import reports_bp
+from routes.notifications import notifications_bp
+
+# Initialize limiter
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[Config.RATELIMIT_DEFAULT],
+    storage_uri=Config.RATELIMIT_STORAGE_URI,
+)
+
+
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
+
+    # CORS
+    CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True)
+
+    # Rate limiting
+    limiter.init_app(app)
+
+    # Register blueprints
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(upload_bp, url_prefix='/api/upload')
+    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
+    app.register_blueprint(items_bp, url_prefix='/api/items')
+    app.register_blueprint(customers_bp, url_prefix='/api/customers')
+    app.register_blueprint(delivery_bp, url_prefix='/api/delivery')
+    app.register_blueprint(foodcost_bp, url_prefix='/api/foodcost')
+    app.register_blueprint(branches_bp, url_prefix='/api/branches')
+    app.register_blueprint(recommendations_bp, url_prefix='/api/recommendations')
+    app.register_blueprint(payments_bp, url_prefix='/api/payments')
+    app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
+    app.register_blueprint(finance_bp, url_prefix='/api/finance')
+    app.register_blueprint(search_bp, url_prefix='/api/search')
+    app.register_blueprint(reports_bp, url_prefix='/api/reports')
+    app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
+
+
+
+
+    # Health check
+    @app.route('/api/health')
+    @limiter.exempt
+    def health():
+        return jsonify({
+            'status': 'ok',
+            'service': 'Cloud Kitchen Analytics API',
+            'version': '2.0.0',
+            'env': Config.FLASK_ENV
+        })
+
+    # Root
+    @app.route('/')
+    def root():
+        return jsonify({
+            'service': 'Kitchen Analytics API',
+            'docs': '/api/health',
+            'version': '2.0.0'
+        })
+
+    # Error handlers
+    @app.errorhandler(404)
+    def not_found(e):
+        return jsonify({'error': 'Endpoint not found'}), 404
+
+    @app.errorhandler(500)
+    def server_error(e):
+        return jsonify({'error': 'Internal server error'}), 500
+
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        return jsonify({'error': 'Rate limit exceeded. Try again later.'}), 429
+
+    return app
+
+
+# Gunicorn entry
+app = create_app()
+
+if __name__ == '__main__':
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+
+
+
+if not app.debug:
+    # Console logging (Render captures stdout)
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
+    )
+    handler.setFormatter(formatter)
+    app.logger.addHandler(handler)
+
+    

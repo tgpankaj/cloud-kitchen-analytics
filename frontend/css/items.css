@@ -1,0 +1,377 @@
+/* ============================================
+   ITEM PERFORMANCE PAGE
+   ============================================ */
+
+/* ── Best/Worst Cards ── */
+.best-worst-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.best-card {
+    border-top: 4px solid var(--success);
+}
+
+.worst-card {
+    border-top: 4px solid var(--danger);
+}
+
+.bw-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.bw-header h3 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.bw-sub {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.bw-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.bw-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+}
+
+.bw-item:last-child {
+    border-bottom: none;
+}
+
+.bw-item-name {
+    font-weight: 500;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 0.5rem;
+}
+
+.bw-item-meta {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-left: 0.5rem;
+}
+
+.bw-item-value {
+    font-weight: 700;
+    color: var(--success);
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+.bw-item-value.negative {
+    color: var(--danger);
+}
+
+/* ── Menu Engineering Matrix ── */
+.matrix-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    border-radius: 8px;
+    font-size: 0.85rem;
+}
+
+.matrix-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.dot-star { background: var(--success); }
+.dot-plowhorse { background: var(--warning); }
+.dot-puzzle { background: var(--info); }
+.dot-dog { background: var(--danger); }
+
+.matrix-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.matrix-quadrant {
+    padding: 1.25rem;
+    border-radius: 10px;
+    border: 2px solid;
+    min-height: 200px;
+}
+
+.quadrant-star {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.quadrant-plowhorse {
+    background: #fffbeb;
+    border-color: #fcd34d;
+}
+
+.quadrant-puzzle {
+    background: #eff6ff;
+    border-color: #93c5fd;
+}
+
+.quadrant-dog {
+    background: #fef2f2;
+    border-color: #fca5a5;
+}
+
+.matrix-quadrant h4 {
+    margin-bottom: 0.25rem;
+    font-size: 1rem;
+}
+
+.matrix-items {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.matrix-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.matrix-item-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 0.5rem;
+}
+
+.matrix-item-value {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+/* ── Table Controls ── */
+.table-controls {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.table-controls input,
+.table-controls select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background: var(--card);
+    min-width: 150px;
+}
+
+.table-controls input:focus,
+.table-controls select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* ── Data Table ── */
+.table-wrapper {
+    overflow-x: auto;
+    margin-top: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 720px;
+}
+
+.data-table thead {
+    background: var(--bg);
+}
+
+.data-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.data-table th.num {
+    text-align: right;
+}
+
+.data-table th.sortable {
+    cursor: pointer;
+    transition: color 0.15s;
+}
+
+.data-table th.sortable:hover {
+    color: var(--primary);
+}
+
+.data-table th.sortable::after {
+    content: '⇅';
+    font-size: 0.7rem;
+    margin-left: 0.35rem;
+    opacity: 0.4;
+}
+
+.data-table th.sort-asc::after {
+    content: '▲';
+    opacity: 1;
+    color: var(--primary);
+}
+
+.data-table th.sort-desc::after {
+    content: '▼';
+    opacity: 1;
+    color: var(--primary);
+}
+
+.data-table td {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.data-table td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:hover {
+    background: var(--bg);
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.cell-profit {
+    font-weight: 600;
+}
+
+.cell-profit.positive {
+    color: var(--success);
+}
+
+.cell-profit.negative {
+    color: var(--danger);
+}
+
+.item-category {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.status-star {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-plowhorse {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-puzzle {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-dog {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-none {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.center {
+    text-align: center;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .matrix-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .matrix-legend {
+        gap: 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .table-controls {
+        width: 100%;
+    }
+
+    .table-controls input,
+    .table-controls select {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .bw-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+}
+

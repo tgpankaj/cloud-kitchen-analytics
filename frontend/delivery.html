@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delivery Analytics — Kitchen Analytics</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/delivery.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">🍱</span>
+            <h1>Kitchen Analytics</h1>
+        </div>
+        <div class="nav-links">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="upload.html">Upload</a>
+            <a href="items.html">Items</a>
+            <a href="customers.html">Customers</a>
+            <a href="delivery.html" class="active">Delivery</a>
+            <button onclick="logout()" class="btn btn-secondary btn-sm">Logout</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="page-header">
+            <div>
+                <h2>🚚 Delivery Analytics</h2>
+                <p class="muted">Prep time, delivery time, and platform performance</p>
+            </div>
+            <div class="filter-group">
+                <select id="daysFilter" onchange="loadDelivery()">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="all">All time</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="alertBox" class="alert" style="display:none"></div>
+
+        <!-- KPIs -->
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon">⏱️</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Avg Prep Time</span>
+                    <span class="kpi-value" id="kpiPrep">—</span>
+                    <span class="kpi-sub">kitchen-side</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">🚴</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Avg Delivery Time</span>
+                    <span class="kpi-value" id="kpiDelivery">—</span>
+                    <span class="kpi-sub">platform-side</span>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">⏰</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Avg Total Time</span>
+                    <span class="kpi-value" id="kpiTotal">—</span>
+                    <span class="kpi-sub">end to end</span>
+                </div>
+            </div>
+            <div class="kpi-card warning-card">
+                <div class="kpi-icon">⚠️</div>
+                <div class="kpi-content">
+                    <span class="kpi-label">Late Rate</span>
+                    <span class="kpi-value negative" id="kpiLate">—</span>
+                    <span class="kpi-sub" id="kpiLateSub">orders >45 min</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Delivery Distribution -->
+        <section class="charts-grid-2">
+            <div class="card chart-card">
+                <div class="chart-header">
+                    <h3>📊 Delivery Time Distribution</h3>
+                </div>
+                <div class="chart-container-sm">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+            <div class="card chart-card">
+                <div class="chart-header">
+                    <h3>🥧 Late vs On-Time</h3>
+                </div>
+                <div class="chart-container-sm">
+                    <canvas id="lateChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Prep vs Delivery Scatter -->
+        <section class="card chart-card">
+            <div class="chart-header">
+                <h3>🎯 Prep Time vs Delivery Time</h3>
+                <p class="muted small">Each bubble = one order. Size = order value.</p>
+            </div>
+            <div class="chart-container">
+                <canvas id="scatterChart"></canvas>
+            </div>
+        </section>
+
+        <!-- By Platform Table -->
+        <section class="card">
+            <div class="chart-header">
+                <h3>📱 Platform Performance</h3>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Platform</th>
+                            <th class="num">Orders</th>
+                            <th class="num">Avg Prep</th>
+                            <th class="num">Avg Delivery</th>
+                            <th class="num">Avg AOV</th>
+                            <th class="num">Late Rate</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="platformTableBody">
+                        <tr><td colspan="7" class="muted center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Slow Dishes -->
+        <section class="card">
+            <div class="chart-header">
+                <h3>🐢 Slowest Dishes</h3>
+                <p class="muted small">Items with highest prep times — optimize or pre-prep</p>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="num">Avg Prep Time</th>
+                            <th class="num">Avg Delivery Time</th>
+                            <th class="num">Orders</th>
+                            <th>Recommendation</th>
+                        </tr>
+                    </thead>
+                    <tbody id="slowDishesBody">
+                        <tr><td colspan="5" class="muted center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/delivery.js"></script>
+    <script src="js/kitchen-selector.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/mobile-nav.js"></script>
+</body>
+</html>
